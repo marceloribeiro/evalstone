@@ -2,6 +2,24 @@
 
 All notable changes to `python/evalstone`. Semantic versioning; tags `lib-vX.Y.Z`.
 
+## 0.2.0 — unreleased
+
+Attach a project to a center.
+
+- `center:` in `evalstone.yaml` (`url`, `project`, `api_key_env` — an `es_…` ingest key)
+  routes judge and prompt-target calls through the center's model proxy, so no provider
+  key lives on the machine running the suite; the project's judge settings pick the
+  model (per-check overrides, then the default), `--judge-model` still wins.
+- Judge verdicts are cached in the center (`CenterCache`); a center hiccup is a cache
+  miss, never a failed run.
+- `human` checks of an attached project look labels up in the center (`labels: center`,
+  the default when attached; a file path still works).
+- `evalstone run` pushes its report to the center (`push_runs: false` to opt out); a
+  failed push warns and leaves the exit code alone.
+- Prompt targets (the system under test) always use the local `providers:` + env keys,
+  even when attached — the center proxy is for judges only. The MCP server honours the
+  attach too.
+
 ## 0.1.1 — 2026-10-13
 
 Judge switching and cost honesty.

@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from evalstone._json import sha256
-from evalstone.checks._base import FunctionCheck
+from evalstone.checks._base import FunctionCheck, judge_model_for
 from evalstone.checks.judge import _json_text, extract_json
 from evalstone.dataset import Sample
 from evalstone.output import Output
@@ -69,7 +69,7 @@ def pairwise(
     def ask(ctx: Context, sample_input: str, a: str, b: str) -> tuple[str, str, float, float]:
         user = USER.format(input=sample_input, a=a, b=b)
         resp = ctx.providers.complete(
-            ctx.judge_model or model,
+            judge_model_for(ctx, key, model),
             {
                 "system": SYSTEM.format(rubric=rubric.strip()),
                 "messages": [ChatMessage(role="user", content=user)],

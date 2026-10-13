@@ -74,6 +74,8 @@ class Session:
 
     def config(self) -> Config:
         cfg = Config.load(self.config_path or CONFIG_FILENAME)
+        if cfg.attached:
+            return cfg  # judges go through the center's proxy; targets use cfg's local registry
         key = canonical(
             {
                 "providers": {k: v.model_dump(mode="json") for k, v in cfg.providers.items()},
@@ -91,6 +93,8 @@ class Session:
         return cfg
 
     def context(self, cfg: Config) -> Context:
+        if cfg.attached:
+            return cfg.context()  # center proxy, center cache, per-check overrides, labels
         return Context(providers=cfg.provider_registry(), cache=self.cache)
 
     def root(self) -> Path:

@@ -85,8 +85,11 @@ def human(
     """Score from a person's label for this (sample, output); unlabelled → error.
 
     ``check`` selects labels recorded for a specific rubric (``evalstone label
-    --check``); ``None`` uses the overall grade.
+    --check``); ``None`` uses the overall grade. ``labels="center"`` (what an attached
+    project gets by default) looks the label up in the center instead of a file.
     """
+    if labels == "center":
+        return FunctionCheck(key, _center_lookup(check), kind=CheckKind.HUMAN)
     store_path = Path(labels)
     cached: dict[str, Any] = {}
 
@@ -119,6 +122,34 @@ def human(
         )
 
     return FunctionCheck(key, fn, kind=CheckKind.HUMAN)
+
+
+def _center_lookup(check: str | None):
+    def fn(sample: Sample, output: Output, ctx: Any) -> Score:
+        client = (ctx.extra or {}).get("center_client") if ctx is not None else None
+        if client is None:
+            return Score.errored("human: labels=center but the run is not attached to a center")
+        try:
+            found = client.label_lookup(sample.id, output_hash(output), check)
+        except Exception as exc:  # a center hiccup is an error score, never a pass
+            return Score.errored(f"human: center lookup failed: {exc}")
+        if found is None:
+            return Score.errored(
+                f"no human label in the center for {sample.id} @ {output_hash(output)}"
+            )
+        reason = found.get("notes") or ("labelled pass" if found["passed"] else "labelled fail")
+        return Score(
+            value=found["value"],
+            passed=found["passed"],
+            reason=reason,
+            raw={
+                "labeler": found.get("labeler", ""),
+                "grade": found.get("raw"),
+                "at": found.get("labeled_at"),
+            },
+        )
+
+    return fn
 
 
 __all__ = ["Label", "LabelStore", "human", "output_hash"]
