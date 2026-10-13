@@ -39,6 +39,9 @@ test.describe('Learning center', () => {
 
   test('Evalstone pages state their status honestly', async ({ page }) => {
     const docs = new DocsPage(page);
+    await docs.goto('/evalstone/how-it-works');
+    await expect(docs.title).toHaveText('How it works');
+    await expect(page.getByText('No key, a network error, a refusal, malformed JSON', { exact: false })).toBeVisible();
     await docs.goto('/evalstone/library');
     await expect(page.getByText('Not yet released')).toBeVisible();
     await docs.goto('/evalstone/center');

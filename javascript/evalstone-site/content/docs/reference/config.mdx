@@ -38,6 +38,12 @@ prices:                              # USD per 1M tokens (input, output); overri
   my-model: [1.0, 2.0]
 ```
 
+`providers.<name>` takes `base_url`, `api_key_env`, `headers`, `timeout` (and
+`max_tokens_param` for OpenAI-compatible servers). The `openai` adapter speaks
+to any OpenAI-compatible server, so OpenRouter, Ollama, vLLM or Groq are a
+`base_url` away; keys always come from the environment. The full picture:
+[How it works](/docs/evalstone/how-it-works).
+
 ## Targets
 
 | `kind` | Keys | Produces |

@@ -1,0 +1,103 @@
+---
+title: How it works
+description: What runs with no model, what needs one, and how a judge reaches your provider.
+---
+
+Evalstone is a library that computes scores and decisions. It has no account,
+no proxy and no relay: when a check needs a model, the library calls the
+provider you configured, directly from the machine running the suite, with a
+key from your environment. Everything else runs offline.
+
+## What runs with no model at all
+
+| Piece | Model? |
+| --- | --- |
+| Deterministic checks: `exact`, `contains`, `regex`, `json_schema`, `length`, `numeric_tolerance` | no |
+| Safety rules: `safety.refusal`, `safety.no_pii`, `safety.forbidden` | no |
+| Agent-trajectory checks: `trajectory.*` | no |
+| Human labels: `evalstone label` and the `human` check | no |
+| Datasets, targets (`recorded`, `callable`, `http`), suites, gates, reports, `compare` | no |
+| The CLI, the pytest plugin, the GitHub Action, the MCP server | no |
+
+The quickstart's first run is exactly this: recorded outputs, deterministic
+checks, a gate. Nothing is called, nothing costs money, and the result is the
+same every time.
+
+A `callable` or `http` target runs *your* code, which may well call a model;
+that is your feature under test, not Evalstone.
+
+## What needs a model
+
+| Piece | What it does with the model |
+| --- | --- |
+| `judge` | sends your rubric and the output, asks for a level on a small scale plus a reason, as JSON |
+| `rag.faithfulness`, `rag.context_relevance`, `rag.answer_relevance` | the same judge with a fixed rubric each |
+| `comparison.pairwise` | asks which of two outputs is better, in both orders to cancel position bias |
+| a `prompt` target | the thing under test is a prompt template run through a model you name |
+
+Chapter 6 of Evals 101, [LLM-as-judge](/docs/learn/llm-as-judge), is the
+background: why small scales, why a rubric, why judges get calibrated against
+human labels.
+
+## How a judge reaches a provider
+
+A model is named as `provider/model`, either per check (`model:`) or once for
+the project:
+
+```yaml
+judges:
+  default_model: anthropic/claude-haiku-5-5
+providers:
+  anthropic: { api_key_env: ANTHROPIC_API_KEY }
+  openai:    { api_key_env: OPENAI_API_KEY }
+  gemini:    { api_key_env: GEMINI_API_KEY }
+```
+
+Three adapters ship with the library:
+
+| Provider key | Speaks to | Default key variable |
+| --- | --- | --- |
+| `openai` | the OpenAI Chat Completions API: `api.openai.com`, or **any compatible server** via `base_url` | `OPENAI_API_KEY` |
+| `anthropic` | the Anthropic API through the official SDK (the `[anthropic]` extra) | `ANTHROPIC_API_KEY` |
+| `gemini` | Google's Gemini API | `GEMINI_API_KEY` |
+
+OpenRouter is not built in and not required; it is one `base_url` the `openai`
+adapter can point at, like Ollama, vLLM, Groq or Together:
+
+```yaml
+providers:
+  openai: { base_url: https://openrouter.ai/api/v1, api_key_env: OPENROUTER_API_KEY }
+judges:
+  default_model: openai/anthropic/claude-haiku-5-5   # OpenRouter's model id after the provider key
+```
+
+```yaml
+providers:
+  openai: { base_url: http://localhost:11434/v1 }     # Ollama: no key
+judges:
+  default_model: openai/llama3.1
+```
+
+Rules that hold for every adapter:
+
+- **Keys come from environment variables** (`api_key_env:` names which one).
+  They are never written to `evalstone.yaml`, a report or a cache.
+- **Verdicts are cached by content.** The cache key is the judge's version
+  (rubric, scale, model) plus the exact prompt, so an unchanged output on an
+  unchanged judge is never sent again. Re-running a suite after a code change
+  costs only the outputs that changed.
+- **Every call is priced** from a built-in table of USD per million tokens
+  (`prices:` overrides it), and the gate can cap `max_cost_usd`.
+- **No key, a network error, a refusal, malformed JSON: an error, never a pass.**
+  The gate's `max_error_rate` defaults to 0, so a judge outage fails the gate
+  instead of hiding inside a pass rate.
+- **Thresholds live outside the cache.** A judge caches the model's raw level
+  and reason; `pass_level` / `threshold` are applied on read, so changing the
+  bar does not re-spend.
+
+## Where the data goes
+
+Today: nowhere but your provider. A run is a JSON file you keep, commit or
+upload as a CI artifact. The planned [center](/docs/evalstone/center) adds an
+API you can self-host that stores runs in PostgreSQL; the library will stay
+usable without it.
