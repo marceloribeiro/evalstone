@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from evalstone._json import dumps
 
 
 class Output(BaseModel):
@@ -27,8 +28,9 @@ class Output(BaseModel):
             return self.value
         if self.value is None:
             return ""
-        return json.dumps(self.value, ensure_ascii=False, sort_keys=True)
+        return dumps(self.value, sort_keys=True)
 
     @classmethod
     def failed(cls, error: str, **kwargs: Any) -> Output:
-        return cls(value=None, error=error, **kwargs)
+        kwargs.setdefault("value", None)
+        return cls(error=error, **kwargs)

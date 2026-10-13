@@ -49,16 +49,24 @@ class Score(BaseModel):
 
     @classmethod
     def ok(cls, reason: str = "", *, value: float = 1.0, **kw: Any) -> Score:
-        return cls(value=value, passed=True, reason=reason, **kw)
+        kw.setdefault("passed", True)
+        return cls(value=value, reason=reason, **kw)
 
     @classmethod
     def fail(cls, reason: str = "", *, value: float = 0.0, **kw: Any) -> Score:
-        return cls(value=value, passed=False, reason=reason, **kw)
+        kw.setdefault("passed", False)
+        return cls(value=value, reason=reason, **kw)
 
     @classmethod
     def errored(cls, error: str, **kw: Any) -> Score:
-        """The check could not score this output. Counted separately, never a pass."""
-        return cls(value=0.0, passed=False, error=error, reason=error, **kw)
+        """The check could not score this output. Counted separately, never a pass.
+
+        ``reason`` defaults to the error text; pass your own to keep a short error
+        code and a longer explanation apart.
+        """
+        kw.setdefault("reason", error)
+        kw.setdefault("value", 0.0)
+        return cls(passed=False, error=error, **kw)
 
     @classmethod
     def from_bool(cls, ok: bool, reason: str = "") -> Score:

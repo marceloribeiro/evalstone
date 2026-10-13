@@ -2,10 +2,11 @@
 set dotenv-load := true
 
 venv := "venv/bin"
+python := env_var_or_default("PYTHON", "python3.13")
 
-# Install the package in editable mode with dev extras into ./venv.
+# Install the package in editable mode with dev extras into ./venv (PYTHON=python3.12 to override).
 install:
-    test -d venv || python3.13 -m venv venv
+    test -d venv || {{python}} -m venv venv
     {{venv}}/pip install -q --upgrade pip
     {{venv}}/pip install -q -e ".[dev]"
 

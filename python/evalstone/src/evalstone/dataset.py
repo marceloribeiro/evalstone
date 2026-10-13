@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import random
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from enum import StrEnum
+from functools import cached_property
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +28,14 @@ class Source(StrEnum):
 
 
 class Sample(BaseModel):
-    """One evaluation case."""
+    """One evaluation case.
+
+    ``id`` defaults to a hash of ``(input, expected)``: two samples with the same
+    input and reference are the same case even if tagged differently — give
+    explicit ids when you need both. ``metadata`` is free-form annotation and is
+    **not** part of the dataset version (``Dataset.content_hash``); anything a
+    check reads to score belongs in ``input`` or ``expected``.
+    """
 
     model_config = ConfigDict(frozen=True)
 
@@ -60,10 +69,16 @@ class Dataset:
     def __init__(self, name: str, samples: Iterable[Sample] = ()) -> None:
         self.name = name
         self._samples: list[Sample] = list(samples)
-        ids = [s.id for s in self._samples]
-        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        counts = Counter(s.id for s in self._samples)
+        dupes = sorted(i for i, n in counts.items() if n > 1)
         if dupes:
-            raise ValueError(f"dataset {name!r} has duplicate sample ids: {dupes}")
+            derived = any(s.id in dupes and not _explicit_id(s) for s in self._samples)
+            hint = (
+                " (ids are derived from input+expected; give explicit `id`s to keep both)"
+                if derived
+                else ""
+            )
+            raise ValueError(f"dataset {name!r} has duplicate sample ids: {dupes}{hint}")
 
     # ── construction ─────────────────────────────────────────────────────
 
@@ -94,9 +109,13 @@ class Dataset:
 
     # ── identity ─────────────────────────────────────────────────────────
 
-    @property
+    @cached_property
     def content_hash(self) -> str:
-        """sha256 over the ordered sample contents — the dataset *version*."""
+        """sha256 over the ordered sample contents — the dataset *version*.
+
+        Covers id, input, expected and tags; ``metadata`` and ``source`` are
+        deliberately outside the version. Samples are frozen, so this is cached.
+        """
         return sha256([s.content() for s in self._samples])
 
     # ── access ───────────────────────────────────────────────────────────
@@ -127,6 +146,8 @@ class Dataset:
         name: str | None = None,
     ) -> Dataset:
         """Samples carrying **all** ``tags`` and satisfying ``predicate``."""
+        if isinstance(tags, str):
+            tags = [tags]
         wanted = set(tags or ())
         kept = [
             s
@@ -157,3 +178,7 @@ class Dataset:
 
     def __repr__(self) -> str:
         return f"Dataset(name={self.name!r}, samples={len(self)}, hash={self.content_hash[:12]})"
+
+
+def _explicit_id(sample: Sample) -> bool:
+    return sample.id != sha256({"input": sample.input, "expected": sample.expected})[:16]

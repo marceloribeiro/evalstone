@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "evalstone"
-version = "0.1.0.dev1"
+dynamic = ["version"]
 description = "The plug-and-play evals layer for LLM-based projects: datasets, checks, suites, runs and gates."
 readme = "README.md"
 license = "MIT"
@@ -34,6 +34,9 @@ dev = [
 Homepage = "https://evalstone.com"
 Documentation = "https://evalstone.com/docs"
 Repository = "https://github.com/marceloribeiro/evalstone"
+
+[tool.hatch.version]
+path = "src/evalstone/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/evalstone"]

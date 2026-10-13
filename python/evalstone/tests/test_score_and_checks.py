@@ -101,3 +101,31 @@ def test_registry_refuses_duplicates_unless_replace():
     assert registry.get("k") is three
     with pytest.raises(KeyError, match="unknown check"):
         registry.get("nope")
+
+
+# ── review findings on PR 1 ──────────────────────────────────────────────────
+
+
+def test_factories_accept_overrides_without_keyword_collisions():
+    s = Score.errored("timeout", reason="judge unreachable after 3 retries")
+    assert s.error == "timeout" and s.reason == "judge unreachable after 3 retries" and not s.passed
+    assert Score.ok("fine", value=0.9).value == 0.9
+    assert Score.fail("meh", value=0.3).value == 0.3
+    assert Output.failed("boom", value={"partial": True}).value == {"partial": True}
+
+
+def test_output_text_handles_models_and_dataclasses():
+    from dataclasses import dataclass
+
+    from pydantic import BaseModel
+
+    class Resp(BaseModel):
+        answer: str
+
+    @dataclass
+    class Row:
+        n: int
+
+    assert Output(value=Resp(answer="hi")).text == '{"answer": "hi"}'
+    assert Output(value=Row(n=1)).text == '{"n": 1}'
+    assert Output(value={"s": {2, 1}}).text == '{"s": [1, 2]}'

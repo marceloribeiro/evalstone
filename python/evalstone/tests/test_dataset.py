@@ -99,3 +99,70 @@ def test_sample_and_split_are_deterministic():
     assert [s.id for s in ds.split(0.25, seed=3)[1]] == [s.id for s in held]
     with pytest.raises(ValueError):
         ds.split(1.5)
+
+
+# ── review findings on PR 1 ──────────────────────────────────────────────────
+
+
+def test_content_hash_is_reproducible_for_sets_tuples_dates_and_models():
+    import datetime as dt
+
+    from pydantic import BaseModel
+
+    class Inp(BaseModel):
+        q: str
+
+    sample = Sample(
+        id="x",
+        input={"terms": {"gamma", "alpha", "beta"}, "pair": (1, 2), "when": dt.date(2026, 1, 2)},
+        expected=Inp(q="hi"),
+    )
+    same = Sample(
+        id="x",
+        input={"terms": {"beta", "alpha", "gamma"}, "pair": (1, 2), "when": dt.date(2026, 1, 2)},
+        expected=Inp(q="hi"),
+    )
+    assert same.content() == sample.content()
+    h = Dataset("d", [sample]).content_hash
+    assert h == Dataset("d", [sample]).content_hash and len(h) == 64
+
+
+def test_unhashable_values_raise_instead_of_stringifying():
+    class Opaque:
+        pass
+
+    with pytest.raises(TypeError, match="not JSON-serialisable"):
+        Sample(input=Opaque())
+    with pytest.raises(TypeError, match="dict keys must be strings"):
+        Sample(input={1: "a", "b": 2})
+
+
+def test_filter_accepts_a_single_tag_string():
+    ds = Dataset.from_records(
+        "d",
+        [
+            {"id": "a", "input": 1, "tags": ["rag"]},
+            {"id": "b", "input": 2, "tags": ["r", "a", "g"]},
+        ],
+    )
+    assert [s.id for s in ds.filter(tags="rag")] == ["a"]
+
+
+def test_duplicate_derived_ids_explain_themselves_and_detection_is_fast():
+    with pytest.raises(ValueError, match="derived from input\\+expected"):
+        Dataset.from_records(
+            "d", [{"input": "q", "tags": ["easy"]}, {"input": "q", "tags": ["hard"]}]
+        )
+    with pytest.raises(ValueError) as exc:
+        Dataset("d", [Sample(id="s", input=1), Sample(id="s", input=2)])
+    assert "derived" not in str(exc.value)
+    import time
+
+    started = time.perf_counter()
+    Dataset.from_records("big", [{"id": str(i), "input": i} for i in range(20_000)])
+    assert time.perf_counter() - started < 1.0
+
+
+def test_content_hash_is_cached():
+    ds = Dataset.from_records("d", [{"id": "a", "input": 1}])
+    assert ds.content_hash is ds.content_hash

@@ -21,7 +21,7 @@ live under [`docs/`](docs).
 
 | Path | What | Stack |
 | --- | --- | --- |
-| `python/evalstone` | Library · CLI · MCP server · pytest plugin | Python 3.13 |
+| `python/evalstone` | Library · CLI · MCP server · pytest plugin | Python 3.12+ |
 | `python/evalstone-api` | The center (control plane, sole database owner) | FastAPI · SQLAlchemy 2 · PostgreSQL 16 + pgvector · Redis · Celery |
 | `javascript/evalstone-web` | The center web app | Next.js 16 · React 19 · Tailwind 4 · shadcn |
 | `javascript/evalstone-site` | evalstone.com: landing + learning docs | Next.js 16 · Fumadocs |
