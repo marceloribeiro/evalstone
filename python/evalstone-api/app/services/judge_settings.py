@@ -24,14 +24,26 @@ def _live_provider_names(db: Session, project: Project) -> set[str]:
     )
 
 
-def _check_model(names: set[str], model: str, *, where: str) -> str:
+MAX_PROVIDER_NAME = 50
+MAX_BARE_MODEL = 200  # model_calls.model width
+
+
+def split_model(model: str, *, where: str = "model") -> tuple[str, str]:
+    """`<provider>/<model>` → (provider, bare model); the one format rule for every caller."""
     model = model.strip()
     name, sep, bare = model.partition("/")
     if not sep or not name or not bare:
         raise Invalid(f"{where}: model must be '<provider>/<model>', got {model!r}")
+    if len(name) > MAX_PROVIDER_NAME or len(bare) > MAX_BARE_MODEL:
+        raise Invalid(f"{where}: provider ≤ {MAX_PROVIDER_NAME} and model ≤ {MAX_BARE_MODEL} chars")
+    return name, bare
+
+
+def _check_model(names: set[str], model: str, *, where: str) -> str:
+    name, bare = split_model(model, where=where)
     if name not in names:
         raise Invalid(f"{where}: no provider named {name!r} in this organization")
-    return model
+    return f"{name}/{bare}"
 
 
 def put(

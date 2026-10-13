@@ -84,9 +84,8 @@ def test_complete_resolves_the_judge_model_and_returns_the_library_response(clie
         calls["items"][0]["check_key"] == "helpful"
         and calls["items"][0]["provider_name"] == "judge"
     )
-    assert (
-        calls["usage"]["cost_usd"] == pytest.approx(resp.cost_usd) and calls["usage"]["calls"] == 1
-    )
+    usage = client.get(f"/projects/{judged['id']}/model/usage", headers=judged["headers"]).json()
+    assert usage["cost_usd"] == pytest.approx(resp.cost_usd) and usage["calls"] == 1
 
 
 @respx.mock
@@ -133,7 +132,8 @@ def test_upstream_failure_is_502_and_metered(client, judged):
         and calls["items"][0]["ok"] is False
         and "429" in calls["items"][0]["error"]
     )
-    assert calls["usage"] == {
+    usage = client.get(f"/projects/{judged['id']}/model/usage", headers=judged["headers"]).json()
+    assert usage == {
         "calls": 1,
         "failed": 1,
         "input_tokens": 0,
@@ -196,3 +196,132 @@ def test_unpriced_calls_are_counted(client, judged, db):
         "usage"
     ]
     assert usage["unpriced_calls"] == 1 and usage["cost_usd"] == 0.0
+
+
+# --- regressions from the #31 review ---------------------------------------------------------
+
+
+def test_no_database_transaction_is_held_during_the_upstream_call(db, judged, monkeypatch):
+    """A slow judge must not pin a pooled connection for its whole timeout."""
+    from uuid import UUID
+
+    from evalstone.providers import ChatMessage
+
+    from app.services import projects as project_service
+
+    seen: dict[str, bool] = {}
+
+    class FakeRegistry:
+        def complete(self, model, request):
+            seen["in_transaction"] = db.in_transaction()
+            return ChatResponse(
+                text="4", model="small", input_tokens=1, output_tokens=1, latency_ms=3.0
+            )
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(provider_svc, "build_registry", lambda entries, **kw: FakeRegistry())
+    p = project_service.get_project(db, UUID(judged["id"]))
+    svc.complete(
+        db,
+        project=p,
+        caller=None,
+        model="judge/small",
+        check_key=None,
+        system=None,
+        messages=[ChatMessage(role="user", content="x")],
+        max_tokens=8,
+        temperature=None,
+    )
+    assert seen["in_transaction"] is False
+    assert db.query(__import__("app.models", fromlist=["ModelCall"]).ModelCall).count() == 1
+
+
+@respx.mock
+def test_adapter_crash_after_the_spend_is_metered_and_502(client, judged):
+    respx.post(UPSTREAM + "/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "model": "small",
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": None, "completion_tokens": 5},
+            },
+        )
+    )
+    r = client.post(
+        f"/projects/{judged['id']}/model/complete", json=BODY, headers=judged["headers"]
+    )
+    assert r.status_code == 502
+    calls = client.get(f"/projects/{judged['id']}/model/calls", headers=judged["headers"]).json()[
+        "items"
+    ]
+    assert len(calls) == 1 and calls[0]["ok"] is False and "TypeError" in calls[0]["error"]
+
+
+@respx.mock
+def test_failed_calls_record_their_latency(client, judged):
+    import time
+
+    def slow(request):
+        time.sleep(0.05)
+        return httpx.Response(500, json={"error": {"message": "boom"}})
+
+    respx.post(UPSTREAM + "/chat/completions").mock(side_effect=slow)
+    assert (
+        client.post(
+            f"/projects/{judged['id']}/model/complete", json=BODY, headers=judged["headers"]
+        ).status_code
+        == 502
+    )
+    call = client.get(f"/projects/{judged['id']}/model/calls", headers=judged["headers"]).json()[
+        "items"
+    ][0]
+    assert call["latency_ms"] >= 50
+
+
+@respx.mock
+def test_over_long_model_is_422_before_any_upstream_call(client, judged):
+    route = respx.post(UPSTREAM + "/chat/completions").mock(return_value=_ok())
+    r = client.post(
+        f"/projects/{judged['id']}/model/complete",
+        json={**BODY, "model": "judge/" + "x" * 230},
+        headers=judged["headers"],
+    )
+    assert r.status_code == 422 and route.call_count == 0
+
+
+def test_model_format_rule_is_shared_with_judge_settings(client, judged):
+    """One rule: judge settings and the proxy accept the same strings (stripped)."""
+    h = judged["headers"]
+    r = client.put(
+        f"/projects/{judged['id']}/judge-settings",
+        json={"default_model": " judge/small "},
+        headers=h,
+    )
+    assert r.status_code == 200 and r.json()["default_model"] == "judge/small"
+    with respx.mock:
+        respx.post(UPSTREAM + "/chat/completions").mock(return_value=_ok())
+        r = client.post(
+            f"/projects/{judged['id']}/model/complete",
+            json={**BODY, "model": " judge/small "},
+            headers=h,
+        )
+    assert r.status_code == 200
+
+
+def test_usage_is_typed_in_openapi(client):
+    from app.config import get_settings
+
+    s = get_settings()
+    spec = client.get("/openapi.json", auth=(s.docs_username, s.docs_password)).json()
+    schema = spec["components"]["schemas"]["Usage"]
+    assert set(schema["properties"]) == {
+        "calls",
+        "failed",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+        "unpriced_calls",
+    }

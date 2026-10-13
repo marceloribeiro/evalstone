@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import ProjectActor, get_project_actor
-from app.schemas.model_proxy import CompleteIn, CompleteOut, ModelCallOut, ModelCallPage
+from app.schemas.model_proxy import CompleteIn, CompleteOut, ModelCallOut, ModelCallPage, UsageOut
 from app.services import model_proxy as svc
 
 router = APIRouter(tags=["model proxy"])
@@ -27,7 +27,7 @@ def complete(
         model=body.model,
         check_key=body.check_key,
         system=body.system,
-        messages=[m.model_dump() for m in body.messages],
+        messages=body.messages,
         max_tokens=body.max_tokens,
         temperature=body.temperature,
     )
@@ -47,5 +47,10 @@ def list_calls(
         total=total,
         offset=offset,
         limit=limit,
-        usage=svc.usage(db, actor.project),
     )
+
+
+@router.get("/projects/{project_id}/model/usage", response_model=UsageOut)
+def get_usage(actor: ProjectActor = Depends(get_project_actor), db: Session = Depends(get_db)):
+    """Totals over every metered call (one aggregate, separate from paging the history)."""
+    return svc.usage(db, actor.project)

@@ -1,17 +1,21 @@
 import uuid
 from datetime import datetime
-from typing import Any
 
 from evalstone.providers import ChatMessage
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.services.model_proxy import MAX_OUTPUT_TOKENS
+from app.services.judge_settings import MAX_BARE_MODEL, MAX_PROVIDER_NAME
+from app.services.model_proxy import MAX_OUTPUT_TOKENS, Usage
 
 
 class CompleteIn(BaseModel):
     """The library's `ChatRequest` minus the bare model, plus how to pick the model."""
 
-    model: str | None = Field(default=None, max_length=250, description="<provider>/<model>")
+    model: str | None = Field(
+        default=None,
+        max_length=MAX_PROVIDER_NAME + 1 + MAX_BARE_MODEL,
+        description="<provider>/<model>",
+    )
     check_key: str | None = Field(
         default=None, max_length=200, description="resolve the model from the judge settings"
     )
@@ -55,4 +59,6 @@ class ModelCallPage(BaseModel):
     total: int
     offset: int
     limit: int
-    usage: dict[str, Any]
+
+
+UsageOut = Usage
