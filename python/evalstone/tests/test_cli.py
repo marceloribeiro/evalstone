@@ -63,7 +63,7 @@ def test_run_with_baseline_gates_regression(in_dir):
     runner.invoke(app, ["init"])
     cfg = Path("evalstone.yaml")
     cfg.write_text(
-        cfg.read_text().replace("gate: { min_pass_rate: 0.9 }", "gate: { max_regression: 0.0 }")
+        cfg.read_text().replace("gate: {min_pass_rate: 0.9}", "gate: {max_regression: 0.0}")
     )
     runner.invoke(app, ["run", "nightly", "--report", "base.json"])
     outputs = Path("evals/outputs.jsonl")
@@ -88,3 +88,38 @@ def test_rag_bot_sample_runs_end_to_end(monkeypatch, tmp_path):
     assert report["summary"]["samples"] == 10 and report["summary"]["errors"] == 0
     assert report["summary"]["per_check"][0]["key"] == "must_include"
     assert os.path.basename(report["target"]["name"]) == "answer"
+
+
+# ── review findings on PR 4 ──────────────────────────────────────────────────
+
+
+def test_config_and_report_problems_exit_2_with_a_message(in_dir):
+    Path("evalstone.yaml").write_text(
+        "project: x\nsuites:\n  s: {dataset: d, target: {url: x}, checks: [a]}\n"
+    )
+    res = runner.invoke(app, ["run", "s"])
+    assert res.exit_code == 2 and "kind" in res.output
+    Path("evalstone.yaml").write_text("\tproject: x\n")
+    assert runner.invoke(app, ["list"]).exit_code == 2
+    Path("evalstone.yaml").unlink()
+    runner.invoke(app, ["init"])
+    Path("evals/golden.jsonl").unlink()
+    res = runner.invoke(app, ["run", "nightly"])
+    assert res.exit_code == 2 and "golden.jsonl" in res.output
+    assert runner.invoke(app, ["show", "missing.json"]).exit_code == 2
+    assert runner.invoke(app, ["compare", "missing.json", "missing.json"]).exit_code == 2
+    assert runner.invoke(app, ["run", "nightly", "--baseline", "nope.json"]).exit_code == 2
+
+
+def test_init_never_overwrites_and_quotes_the_project_name(in_dir):
+    Path("evals").mkdir()
+    Path("evals/checks.py").write_text("# MY CUSTOM CHECKS\n")
+    res = runner.invoke(app, ["init"])
+    assert res.exit_code == 2 and "refusing to overwrite" in res.output
+    assert Path("evals/checks.py").read_text() == "# MY CUSTOM CHECKS\n"
+    assert not Path("evalstone.yaml").exists()
+    Path("evals/checks.py").unlink()
+    res = runner.invoke(app, ["init", "--project", "acme: support #1"])
+    assert res.exit_code == 0, res.output
+    assert runner.invoke(app, ["list"]).exit_code == 0
+    assert runner.invoke(app, ["run", "nightly", "--report", "r.json"]).exit_code == 0

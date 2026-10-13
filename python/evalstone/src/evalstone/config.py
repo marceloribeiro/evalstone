@@ -21,14 +21,14 @@ from __future__ import annotations
 
 import importlib
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-from evalstone import checks as check_factories
-from evalstone.checks import registry
+from evalstone.checks import deterministic, registry
 from evalstone.dataset import Dataset
 from evalstone.gate import Gate
 from evalstone.score import Check
@@ -102,12 +102,14 @@ class Config(BaseModel):
             kind = spec.pop("type", None)
             if kind is None:
                 raise ValueError(f"check {key!r} needs a `type`")
-            factory = getattr(check_factories, kind, None)
-            if factory is None or kind in {"check", "registry", "python"}:
-                raise ValueError(f"check {key!r}: unknown type {kind!r}")
-            if kind == "regex":
-                return factory(spec.pop("pattern"), key=key, **spec)
-            return factory(key=key, **spec)
+            factory = FACTORIES.get(kind)
+            if factory is None:
+                known = ", ".join(sorted(FACTORIES))
+                raise ValueError(f"check {key!r}: unknown type {kind!r} (known: {known})")
+            try:
+                return factory(key=key, **spec)
+            except TypeError as exc:
+                raise ValueError(f"check {key!r} ({kind}): {exc}") from None
         return registry.get(key)
 
     def target(self, spec: dict[str, Any]) -> Target:
@@ -134,29 +136,29 @@ class Config(BaseModel):
         return suite, self.target(sc.target)
 
 
-def _module_and_parents(dotted: str) -> list[str]:
-    parts = dotted.split(".")
-    return [".".join(parts[: i + 1]) for i in range(len(parts))]
+# Check types `evalstone.yaml` may name: the deterministic factories by name, minus
+# `python` (it takes a function, not YAML). Later modules extend this mapping.
+FACTORIES: dict[str, Callable[..., Any]] = {
+    name: getattr(deterministic, name) for name in deterministic.__all__ if name != "python"
+}
 
 
 def _load_module(dotted: str, root: Path) -> Any:
-    """Import ``dotted`` from the project at ``root``.
+    """Import ``dotted`` from the project at ``root``, fresh.
 
-    ``root`` is put on ``sys.path``. A module already imported from *this* root is
-    reloaded (so ``@check`` registrations re-run after the registry was cleared);
-    one cached from elsewhere — another project with the same module name — is
-    evicted first.
+    ``root`` is put on ``sys.path``. Everything cached under the module's top-level
+    package — the chain, its siblings, its parents — is evicted first, whether it
+    came from this root (so ``@check`` registrations re-run against a cleared
+    registry) or from another project that happens to use the same module names.
+    A fresh import gives the module new globals, which is how the registry tells
+    a re-import apart from a genuine duplicate key.
     """
-    root_s = str(root)
+    root_s = str(root.resolve())
     if root_s not in sys.path:
         sys.path.insert(0, root_s)
-    for name in _module_and_parents(dotted):
-        cached = sys.modules.get(name)
-        file = getattr(cached, "__file__", None) or ""
-        if cached is not None and not file.startswith(root_s):
-            del sys.modules[name]
-    if dotted in sys.modules:
-        return importlib.reload(sys.modules[dotted])
+    top = dotted.split(".")[0]
+    for name in [n for n in sys.modules if n == top or n.startswith(top + ".")]:
+        del sys.modules[name]
     return importlib.import_module(dotted)
 
 

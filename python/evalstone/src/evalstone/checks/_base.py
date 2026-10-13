@@ -31,7 +31,16 @@ class Registry:
         self._checks: dict[str, Check] = {}
 
     def register(self, chk: Check, *, replace: bool = False) -> Check:
-        if chk.key in self._checks and not replace:
+        """Register ``chk`` under its key.
+
+        A second registration of the same key is an error, except when it is the
+        same function re-imported from a fresh module object (``evalstone.yaml``
+        project reloads, notebook re-runs): same ``__qualname__`` but different
+        module globals. Two distinct functions from one module — closures from a
+        factory, lambdas — share globals and are still rejected.
+        """
+        previous = self._checks.get(chk.key)
+        if previous is not None and not replace and not _reimported(previous, chk):
             raise ValueError(f"check {chk.key!r} is already registered")
         self._checks[chk.key] = chk
         return chk
@@ -50,6 +59,15 @@ class Registry:
 
     def clear(self) -> None:
         self._checks.clear()
+
+
+def _reimported(previous: Check, current: Check) -> bool:
+    pf, cf = getattr(previous, "_fn", None), getattr(current, "_fn", None)
+    if pf is None or cf is None:
+        return False
+    same_name = (pf.__module__, pf.__qualname__) == (cf.__module__, cf.__qualname__)
+    fresh_module = getattr(pf, "__globals__", None) is not getattr(cf, "__globals__", None)
+    return same_name and fresh_module
 
 
 registry = Registry()
@@ -124,15 +142,7 @@ def check(
     def decorator(fn: CheckFn) -> FunctionCheck:
         chk = FunctionCheck(key, fn, kind=CheckKind(kind), version=version)
         if register:
-            # Re-importing or reloading the module that defined a check redefines the
-            # same function; that replaces. A *different* function under the same key
-            # is still a duplicate error.
-            previous = registry._checks.get(key)
-            same_fn = previous is not None and (
-                getattr(previous, "__module__", None),
-                getattr(previous, "__qualname__", None),
-            ) == (fn.__module__, fn.__qualname__)
-            registry.register(chk, replace=same_fn)
+            registry.register(chk)
         return chk
 
     return decorator

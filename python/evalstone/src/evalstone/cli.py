@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 import typer
+import yaml
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -20,7 +22,7 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
-err = Console(stderr=True)
+err = Console(stderr=True, soft_wrap=True)  # never wrap paths inside error messages
 
 ConfigOpt = typer.Option("evalstone.yaml", "--config", "-c", help="Path to evalstone.yaml")
 ReportOpt = typer.Option(None, "--report", "-r", help="Where to write the JSON report")
@@ -31,11 +33,23 @@ FailuresOpt = typer.Option(10, "--failures", help="How many failing results to p
 DirArg = typer.Argument(Path("."), help="Where to create evalstone.yaml and evals/")
 
 
+CONFIG_ERRORS = (FileNotFoundError, ValidationError, yaml.YAMLError)
+SUITE_ERRORS = (KeyError, ValueError, ImportError, AttributeError, OSError, TypeError)
+
+
 def _load(config: str) -> Config:
     try:
         return Config.load(config)
-    except FileNotFoundError as exc:
-        err.print(f"[red]{exc}[/red]")
+    except CONFIG_ERRORS as exc:
+        err.print(f"[red]{config}: {exc}[/red]")
+        raise typer.Exit(2) from None
+
+
+def _load_run(path: Path) -> Run:
+    try:
+        return Run.from_json(path)
+    except (OSError, ValidationError, ValueError) as exc:
+        err.print(f"[red]{path}: {exc}[/red]")
         raise typer.Exit(2) from None
 
 
@@ -111,10 +125,10 @@ def run(
     cfg = _load(config)
     try:
         s, target = cfg.suite(suite)
-    except (KeyError, ValueError, ImportError, AttributeError) as exc:
+    except SUITE_ERRORS as exc:
         err.print(f"[red]{exc}[/red]")
         raise typer.Exit(2) from None
-    base = Run.from_json(baseline) if baseline else None
+    base = _load_run(baseline) if baseline else None
     with console.status(f"running {suite} over {len(s.dataset)} samples…"):
         result = s.run(target, baseline=base, trigger="cli")
     console.print(_run_table(result))
@@ -141,7 +155,7 @@ def gate(
 @app.command("compare")
 def compare_cmd(a: Path, b: Path) -> None:
     """Diff two JSON reports: regressions, improvements, metric deltas."""
-    cmp = compare(Run.from_json(a), Run.from_json(b))
+    cmp = compare(_load_run(a), _load_run(b))
     console.print(cmp.table())
     raise typer.Exit(1 if cmp.regressions else 0)
 
@@ -149,7 +163,7 @@ def compare_cmd(a: Path, b: Path) -> None:
 @app.command()
 def show(report: Path, failures: int = FailuresOpt) -> None:
     """Print a saved report."""
-    r = Run.from_json(report)
+    r = _load_run(report)
     console.print(_run_table(r))
     _print_failures(r, failures)
     _print_gate(r)
@@ -173,20 +187,27 @@ def list_cmd(config: str = ConfigOpt) -> None:
         )
 
 
-INIT_YAML = """project: {project}
-imports: [evals.checks]
-datasets:
-  golden: evals/golden.jsonl
-checks:
-  must_include: {{ type: contains }}
-  short: {{ type: length, max_words: 120 }}
-suites:
-  nightly:
-    dataset: golden
-    target: {{ kind: recorded, path: evals/outputs.jsonl }}
-    checks: [must_include, short, no_apology]
-    gate: {{ min_pass_rate: 0.9 }}
-"""
+def _init_config(project: str) -> str:
+    """The starter config, emitted through the YAML dumper so any project name is safe."""
+    data = {
+        "project": project,
+        "imports": ["evals.checks"],
+        "datasets": {"golden": "evals/golden.jsonl"},
+        "checks": {
+            "must_include": {"type": "contains"},
+            "short": {"type": "length", "max_words": 120},
+        },
+        "suites": {
+            "nightly": {
+                "dataset": "golden",
+                "target": {"kind": "recorded", "path": "evals/outputs.jsonl"},
+                "checks": ["must_include", "short", "no_apology"],
+                "gate": {"min_pass_rate": 0.9},
+            }
+        },
+    }
+    return yaml.safe_dump(data, sort_keys=False, default_flow_style=None, allow_unicode=True)
+
 
 INIT_CHECKS = '''"""Project checks — plain functions registered with @check."""
 
@@ -224,22 +245,29 @@ def init(
     directory: Path = DirArg,
     project: str = typer.Option(None, "--project", "-p"),
 ) -> None:
-    """Create a starter evalstone.yaml, a golden set, recorded outputs and a custom check."""
+    """Create a starter evalstone.yaml, a golden set, recorded outputs and a custom check.
+
+    Refuses to touch any file that already exists — it never overwrites your work.
+    """
     directory.mkdir(parents=True, exist_ok=True)
-    cfg = directory / CONFIG_FILENAME
-    if cfg.exists():
-        err.print(f"[red]{cfg} already exists[/red]")
-        raise typer.Exit(2)
     evals = directory / "evals"
+    name = project or directory.resolve().name or "project"
+    files = {
+        directory / CONFIG_FILENAME: _init_config(name),
+        evals / "checks.py": INIT_CHECKS,
+        evals / "__init__.py": "",
+        evals / "golden.jsonl": "".join(json.dumps(s) + "\n" for s in INIT_SAMPLES),
+        evals / "outputs.jsonl": "".join(json.dumps(o) + "\n" for o in INIT_OUTPUTS),
+    }
+    existing = [str(p) for p in files if p.exists()]
+    if existing:
+        err.print("[red]refusing to overwrite: " + ", ".join(existing) + "[/red]")
+        raise typer.Exit(2)
     evals.mkdir(exist_ok=True)
-    cfg.write_text(INIT_YAML.format(project=project or directory.resolve().name), encoding="utf-8")
-    (evals / "checks.py").write_text(INIT_CHECKS, encoding="utf-8")
-    (evals / "__init__.py").write_text("", encoding="utf-8")
-    samples = "".join(json.dumps(s) + "\n" for s in INIT_SAMPLES)
-    outputs = "".join(json.dumps(o) + "\n" for o in INIT_OUTPUTS)
-    (evals / "golden.jsonl").write_text(samples, encoding="utf-8")
-    (evals / "outputs.jsonl").write_text(outputs, encoding="utf-8")
-    console.print(f"created {cfg}, evals/golden.jsonl, evals/outputs.jsonl, evals/checks.py")
+    for path, content in files.items():
+        path.write_text(content, encoding="utf-8")
+    created = ", ".join(str(p.relative_to(directory)) for p in files)
+    console.print(f"created {created} in {directory.resolve()}")
     console.print("next: [bold]evalstone run nightly[/bold]")
 
 

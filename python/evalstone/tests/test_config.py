@@ -109,3 +109,66 @@ def test_target_needs_a_kind_and_callable_needs_module_colon_attr(project, tmp_p
 def test_missing_config_points_at_init(tmp_path):
     with pytest.raises(FileNotFoundError, match="evalstone init"):
         Config.load(tmp_path)
+
+
+# ── review findings on PR 4 ──────────────────────────────────────────────────
+
+
+def _project(root, mark, *, package=True):
+    (root / "evals").mkdir()
+    if package:
+        (root / "evals" / "__init__.py").write_text("")
+    (root / "evals" / "helpers.py").write_text(f"MARK = {mark!r}\n")
+    (root / "evals" / "checks.py").write_text(
+        textwrap.dedent(
+            f"""
+            from evalstone import check
+            from evals import helpers
+
+            MARK = {mark!r}
+
+            @check("marked")
+            def marked(sample, output):
+                return helpers.MARK == {mark!r}
+            """
+        )
+    )
+    (root / "evalstone.yaml").write_text("project: p\nimports: [evals.checks]\n")
+    return Config.load(root)
+
+
+def test_activate_evicts_same_named_modules_from_a_prefix_sibling_root(tmp_path):
+    import sys
+
+    p2 = tmp_path / "p2"
+    p = tmp_path / "p"
+    p2.mkdir()
+    p.mkdir()
+    _project(p2, "p2").activate()
+    assert sys.modules["evals.checks"].MARK == "p2"
+    _project(p, "p").activate()
+    assert sys.modules["evals.checks"].MARK == "p"
+    assert sys.modules["evals.helpers"].MARK == "p"  # siblings evicted too, not only the chain
+
+
+def test_activate_twice_works_for_namespace_packages(tmp_path):
+    cfg = _project(tmp_path, "ns", package=False)
+    cfg.activate()
+    cfg.activate()
+    from evalstone.checks import registry
+
+    assert "marked" in registry
+
+
+def test_check_types_are_an_allowlist_and_bad_kwargs_are_clear(project):
+    cfg = Config.load(project)
+    for bad in ("FunctionCheck", "deterministic", "_base", "Registry", "python"):
+        cfg.checks["x"] = {"type": bad}
+        with pytest.raises(ValueError, match="unknown type"):
+            cfg.check("x")
+    cfg.checks["short"] = {"type": "length", "max_word": 3}
+    with pytest.raises(ValueError, match=r"check 'short' \(length\): .*max_word"):
+        cfg.check("short")
+    cfg.checks["rx"] = {"type": "regex"}
+    with pytest.raises(ValueError, match="pattern"):
+        cfg.check("rx")
