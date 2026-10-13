@@ -7,6 +7,7 @@ from app.models.dataset import Dataset, DatasetVersion, DatasetVersionSample, Sa
 from app.models.label import JudgeCacheEntry, Label
 from app.models.label_queue import LabelQueue, LabelTask
 from app.models.model_call import ModelCall
+from app.models.monitoring import Alert, Monitor, Trace, TraceScore
 from app.models.organization import Organization, OrganizationInvitation, OrganizationMember, Role
 from app.models.project import IngestKey, Project
 from app.models.provider import ADAPTERS, JudgeSettings, Provider
@@ -15,6 +16,7 @@ from app.models.user import User
 
 __all__ = [
     "ADAPTERS",
+    "Alert",
     "Base",
     "Calibration",
     "CheckDefinition",
@@ -29,6 +31,7 @@ __all__ = [
     "LabelQueue",
     "LabelTask",
     "ModelCall",
+    "Monitor",
     "Organization",
     "OrganizationInvitation",
     "OrganizationMember",
@@ -39,5 +42,7 @@ __all__ = [
     "RunResult",
     "Sample",
     "TimestampedModel",
+    "Trace",
+    "TraceScore",
     "User",
 ]

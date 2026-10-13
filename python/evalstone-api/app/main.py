@@ -19,6 +19,7 @@ from app.routers import (
     label_queues,
     labels,
     model_proxy,
+    monitoring,
     organizations,
     projects,
     providers,
@@ -54,6 +55,7 @@ app.include_router(model_proxy.router)
 app.include_router(catalog.router)
 app.include_router(label_queues.router)
 app.include_router(calibration.router)
+app.include_router(monitoring.router)
 
 
 @app.exception_handler(DomainError)
