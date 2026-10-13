@@ -284,7 +284,9 @@ def init(
 LabelOutOpt = typer.Option("labels.jsonl", "--out", "-o", help="Labels JSONL to append to")
 LabelCheckOpt = typer.Option(None, "--check", help="Record the grade for one rubric/check key")
 LabelScaleOpt = typer.Option(
-    "pass", "--scale", help="'pass' (p/f) or an integer N for a 1..N scale (pass at N-1)"
+    "pass",
+    "--scale",
+    help="'pass' (p/f) or an integer N for a 1..N scale (pass at N-1; a 2-point scale at 2)",
 )
 LabelerOpt = typer.Option("", "--labeler", help="Who is grading (defaults to $USER)")
 ReportArg = typer.Argument(..., help="A JSON report whose outputs you want to grade")
@@ -312,34 +314,40 @@ def label(
     run = _load_run(report)
     store = LabelStore(out)
     who = labeler or os.environ.get("USER", "")
-    levels = None if scale == "pass" else int(scale)
+    levels = None if scale == "pass" else (int(scale) if scale.isdecimal() else 0)
     if levels is not None and levels < 2:
         err.print("[red]--scale must be 'pass' or an integer ≥ 2[/red]")
         raise typer.Exit(2)
+    pass_level = None if levels is None else (levels if levels == 2 else levels - 1)
     seen: set[tuple[str, str]] = set()
     pending = []
+    errored = 0
     for r in run.results:
+        if r.output.error is not None:  # the target failed: nothing to grade
+            errored += 1
+            continue
         k = (r.sample_id, output_hash(r.output))
         if k in seen or store.get(r.sample_id, r.output, check) is not None:
             continue
         seen.add(k)
         pending.append(r)
+    skipped = f", {errored} errored output(s) skipped" if errored else ""
     console.print(
         f"[bold]{len(pending)}[/bold] output(s) to label from run {run.id} "
-        f"({len(store)} already in {out})"
+        f"({len(store)} already in {escape(str(out))}{skipped})"
     )
     added = 0
     for i, r in enumerate(pending, start=1):
         if limit and added >= limit:
             break
-        console.rule(f"{i}/{len(pending)} · sample {r.sample_id}")
+        console.rule(escape(f"{i}/{len(pending)} · sample {r.sample_id}"))
         console.print("[bold]input[/bold]")
-        console.print(_pretty(r.input))
+        _print_value(r.input)
         if r.expected is not None:
             console.print("[bold]expected[/bold]")
-            console.print(_pretty(r.expected))
+            _print_value(r.expected)
         console.print("[bold]output[/bold]")
-        console.print(r.output.text)
+        console.print(r.output.text, markup=False, highlight=False)
         prompt = "grade (p/f, s=skip, q=quit)" if levels is None else f"grade (1-{levels}, s, q)"
         while True:
             grade = typer.prompt(prompt).strip().lower()
@@ -350,7 +358,7 @@ def label(
                 break
             if levels is not None and grade.isdecimal() and 1 <= int(grade) <= levels:
                 n = int(grade)
-                value, passed, raw = (n - 1) / (levels - 1), n >= levels - 1, n
+                value, passed, raw = (n - 1) / (levels - 1), n >= pass_level, n
                 break
             console.print("[yellow]unrecognised grade[/yellow]")
         if grade == "q":
@@ -371,13 +379,16 @@ def label(
             )
         )
         added += 1
-    console.print(f"\n{added} label(s) added → {out} ({len(store)} total)")
+    console.print(f"\n{added} label(s) added → {escape(str(out))} ({len(store)} total)")
 
 
-def _pretty(value: Any) -> str:
+def _print_value(value: Any) -> None:
+    """A sample field, verbatim: model and dataset text is never Rich markup."""
     if value is None:
-        return "[dim](not recorded)[/dim]"
-    return value if isinstance(value, str) else json.dumps(value, indent=2, ensure_ascii=False)
+        console.print("[dim](not recorded)[/dim]")
+        return
+    text = value if isinstance(value, str) else json.dumps(value, indent=2, ensure_ascii=False)
+    console.print(text, markup=False, highlight=False)
 
 
 @app.command()

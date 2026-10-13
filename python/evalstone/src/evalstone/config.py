@@ -131,8 +131,8 @@ class Config(BaseModel):
             if factory is None:
                 known = ", ".join(sorted(FACTORIES))
                 raise ValueError(f"check {key!r}: unknown type {kind!r} (known: {known})")
-            if kind == "human" and "labels" in spec:
-                spec["labels"] = self.root / spec["labels"]  # relative to evalstone.yaml
+            if kind == "human":  # the labels file lives relative to evalstone.yaml
+                spec["labels"] = self.root / spec.get("labels", "labels.jsonl")
             baseline = spec.get("baseline")
             if kind == "comparison.pairwise" and isinstance(baseline, dict) and "kind" in baseline:
                 spec["baseline"] = self.target(baseline)  # a target spec → a Target

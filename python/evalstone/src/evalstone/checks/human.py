@@ -9,7 +9,6 @@ score, an unlabelled one is an error (never a pass).
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -89,10 +88,23 @@ def human(
     --check``); ``None`` uses the overall grade.
     """
     store_path = Path(labels)
+    cached: dict[str, Any] = {}
+
+    def store() -> LabelStore:
+        # One parse per file version: a stat per call (so labels added while a
+        # long-lived server runs are seen), a re-read only when the file changed.
+        try:
+            st = store_path.stat()
+            stamp: tuple[int, int] | None = (st.st_mtime_ns, st.st_size)
+        except FileNotFoundError:
+            stamp = None
+        if cached.get("stamp", ...) != stamp:
+            cached["store"] = LabelStore(store_path)
+            cached["stamp"] = stamp
+        return cached["store"]
 
     def fn(sample: Sample, output: Output) -> Score:
-        store = LabelStore(store_path)  # re-read per sample: labelling may be in progress
-        label = store.get(sample.id, output, check)
+        label = store().get(sample.id, output, check)
         if label is None:
             return Score.errored(
                 f"no human label for {sample.id} @ {output_hash(output)} "
@@ -109,8 +121,4 @@ def human(
     return FunctionCheck(key, fn, kind=CheckKind.HUMAN)
 
 
-def labels_as_records(store: LabelStore) -> list[dict[str, Any]]:
-    return [json.loads(label.model_dump_json()) for label in store]
-
-
-__all__ = ["Label", "LabelStore", "human", "labels_as_records", "output_hash"]
+__all__ = ["Label", "LabelStore", "human", "output_hash"]

@@ -1,11 +1,10 @@
 import json
-import textwrap
 
 import pytest
 from typer.testing import CliRunner
 
 import evalstone as es
-from evalstone import Dataset, Output, RecordedTarget, Sample, Suite
+from evalstone import Context, Dataset, Output, RecordedTarget, Run, Sample, Suite
 from evalstone.checks.human import Label, LabelStore, human, output_hash
 from evalstone.cli import app
 from evalstone.config import Config
@@ -80,22 +79,81 @@ def test_label_command_grades_resumes_and_feeds_the_human_check(tmp_path, monkey
     answer = "Yes — sale items can be returned within 30 days with a receipt."
     assert LabelStore("labels.jsonl").get("returns", answer, "tone").raw == 4
 
-    # the human check reads the labels through the config
+    # the human check reads the labels through the config file itself
     cfg_path = tmp_path / "evalstone.yaml"
     cfg_path.write_text(
-        cfg_path.read_text()
-        + textwrap.dedent(
-            """
-            # appended by the test
-            """
+        cfg_path.read_text().replace(
+            "checks:\n", "checks:\n  reviewed: {type: human, labels: labels.jsonl}\n"
         )
     )
     cfg = Config.load(tmp_path)
-    cfg.checks["reviewed"] = {"type": "human", "labels": "labels.jsonl"}
     cfg.suites["nightly"].checks = ["reviewed"]
     suite, target = cfg.suite("nightly")
     run = suite.run(target)
     by_id = {r.sample_id: r.score for r in run.results}
     assert by_id["returns"].passed is True and by_id["shipping"].passed is False
     assert by_id["shipping"].reason == "wrong window"
-    assert runner.invoke(app, ["label", "r.json", "--scale", "1"]).exit_code == 2
+    for bad in ("1", "five", "1-5"):
+        res = runner.invoke(app, ["label", "r.json", "--scale", bad])
+        assert res.exit_code == 2 and "--scale must be" in res.output, bad
+
+
+def test_two_point_scale_passes_only_at_the_top(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    assert runner.invoke(app, ["init"]).exit_code == 0
+    assert runner.invoke(app, ["run", "nightly", "--report", "r.json"]).exit_code == 0
+    res = runner.invoke(app, ["label", "r.json", "--scale", "2"], input="1\n\n2\n\n")
+    assert res.exit_code == 0, res.output
+    labels = {label.sample_id: label for label in LabelStore("labels.jsonl")}
+    assert labels["returns"].passed is False and labels["returns"].value == 0.0
+    assert labels["shipping"].passed is True and labels["shipping"].value == 1.0
+
+
+def test_label_prints_outputs_verbatim_and_skips_errored_ones(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    assert runner.invoke(app, ["init"]).exit_code == 0
+    assert runner.invoke(app, ["run", "nightly", "--report", "r.json"]).exit_code == 0
+    run = Run.from_json("r.json")
+    for r in run.results:  # one check row per (sample, check): rewrite every row of a sample
+        if r.sample_id == "returns":
+            r.output = Output(value="see [/code] above [bold]not bold[/bold]")
+        else:
+            r.output = Output(value=None, error="target: boom")
+    run.to_json("r.json")
+    res = runner.invoke(app, ["label", "r.json"], input="p\n\n")
+    assert res.exit_code == 0, res.output
+    flat = " ".join(res.output.split())  # the test console soft-wraps at 80 columns
+    assert "see [/code] above [bold]not bold[/bold]" in flat
+    assert "1 output(s) to label" in flat and "3 errored output(s) skipped" in flat
+    assert len(LabelStore("labels.jsonl")) == 1
+
+
+def test_human_check_without_labels_path_is_rooted_at_the_config(tmp_path, monkeypatch):
+    (tmp_path / "evalstone.yaml").write_text("project: p\nchecks:\n  reviewed: {type: human}\n")
+    monkeypatch.chdir(tmp_path.parent)  # not the project directory
+    cfg = Config.load(tmp_path)
+    chk = cfg.check("reviewed")
+    score = chk.evaluate(Sample(id="s", input="q"), Output(value="a"), Context())
+    assert str(tmp_path / "labels.jsonl") in (score.error or "")
+
+
+def test_human_check_parses_the_labels_file_once_per_version(tmp_path, monkeypatch):
+    path = tmp_path / "labels.jsonl"
+    chk = human(labels=path)
+    sample, out = Sample(id="s", input="q"), Output(value="a")
+    assert chk.evaluate(sample, out, Context()).error  # no file yet
+    LabelStore(path).add(Label(sample_id="s", output_hash=output_hash(out), value=1.0, passed=True))
+    assert chk.evaluate(sample, out, Context()).passed is True  # the new file is seen
+    reads = []
+    original = LabelStore.__init__
+
+    def counting(self, p):
+        reads.append(p)
+        original(self, p)
+
+    monkeypatch.setattr(LabelStore, "__init__", counting)
+    for _ in range(50):
+        chk.evaluate(sample, out, Context())
+    assert reads == []  # unchanged file: not parsed again
