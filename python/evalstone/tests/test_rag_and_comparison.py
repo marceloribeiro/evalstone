@@ -169,3 +169,75 @@ def test_config_resolves_dotted_check_types(tmp_path):
     # cheap kinds first: trajectory, then safety/judge/comparison in declared order
     assert suite.check_keys[:3] == ["looked_up", "ordered", "bounded"]
     assert comparison.pairwise is pairwise
+
+
+# ── review findings on PR 6 ──────────────────────────────────────────────────
+
+
+def test_pairwise_labels_every_mixed_outcome_consistently():
+    replies = iter(['{"winner": "A", "reason": "x"}', '{"winner": "tie", "reason": "y"}'])
+
+    class Mixed(JudgeFake):
+        def complete(self, request):
+            self.calls.append(request)
+            return ChatResponse(text=next(replies), model=request.model, cost_usd=0.001)
+
+    chk = pairwise("b", "r", baseline={"s": "x"})
+    score = chk(S, Output(value="y"), ctx(Mixed()))
+    assert score.value == 0.75 and score.passed and score.reason.startswith("candidate mostly wins")
+
+
+def test_pairwise_identity_tracks_the_resolved_model_and_both_orders():
+    prov = JudgeFake(winner='{"winner": "tie"}')
+    chk = pairwise("b", "r", baseline={"s": "x"})
+    a = chk(S, Output(value="y"), ctx(prov))
+    reg_b = Providers(default_model="openai/other")
+    reg_b.register("openai", prov)
+    b = chk(S, Output(value="y"), Context(providers=reg_b, cache=MemoryCache()))
+    assert a.raw["judge_version"] != b.raw["judge_version"]
+    single = pairwise("b", "r", baseline={"s": "x"}, both_orders=False)
+    c = single(S, Output(value="y"), ctx(prov))
+    assert c.raw["judge_version"] != a.raw["judge_version"]
+
+
+def test_pairwise_cache_hit_keeps_the_baseline_cost():
+    prov = JudgeFake(winner='{"winner": "tie"}')
+    costly = RecordedTarget({"s": {"value": "x", "cost_usd": 0.25}})
+    chk = pairwise("b", "r", baseline=costly)
+    c = ctx(prov)
+    first = chk(S, Output(value="y"), c)
+    second = chk(S, Output(value="y"), c)
+    assert first.cost_usd == pytest.approx(0.25 + 0.004)
+    assert second.cost_usd == pytest.approx(0.25) and second.raw["cached"] is True
+
+
+def test_config_baseline_mapping_form_and_target_form(tmp_path):
+    (tmp_path / "evals").mkdir()
+    (tmp_path / "evals" / "golden.jsonl").write_text('{"id": "s", "input": "q"}\n')
+    (tmp_path / "evalstone.yaml").write_text(
+        textwrap.dedent(
+            """
+            project: demo
+            datasets: { golden: evals/golden.jsonl }
+            judges: { default_model: openai/judge }
+            checks:
+              mapped: { type: comparison.pairwise, rubric: r, baseline: { s: "base answer" } }
+              targeted:
+                type: comparison.pairwise
+                rubric: r
+                baseline: { kind: recorded, outputs: { s: "base answer" } }
+            suites:
+              s:
+                dataset: golden
+                target: { kind: recorded, outputs: { s: "cand" } }
+                checks: [mapped, targeted]
+            """
+        )
+    )
+    cfg = Config.load(tmp_path)
+    suite, target = cfg.suite("s")
+    assert suite.check_keys == ["mapped", "targeted"]
+    c = cfg.context()
+    c.providers.register("openai", JudgeFake(winner='{"winner": "A"}'))
+    run = suite.run(target, ctx=c)
+    assert run.summary.errors == 0 and run.summary.results == 2

@@ -7,14 +7,12 @@ judged and the verdicts combined (Evals 101, chapters 4 and 6).
 
 from __future__ import annotations
 
-import hashlib
-import json
-import re
 from collections.abc import Mapping
 from typing import Any
 
-from evalstone._json import canonical
+from evalstone._json import sha256
 from evalstone.checks._base import FunctionCheck
+from evalstone.checks.judge import _json_text, extract_json
 from evalstone.dataset import Sample
 from evalstone.output import Output
 from evalstone.providers import ChatMessage, ProviderError
@@ -41,13 +39,7 @@ ANSWER B:
 
 
 def parse_winner(text: str) -> tuple[str, str]:
-    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
-    if not match:
-        raise ValueError(f"no JSON object in judge reply: {text[:120]!r}")
-    try:
-        data = json.loads(match.group(0))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid JSON in judge reply: {exc.msg}") from None
+    data = extract_json(text)
     winner = str(data.get("winner", "")).strip().upper()
     if winner not in {"A", "B", "TIE"}:
         raise ValueError(f"judge winner must be A, B or tie, got {winner!r}")
@@ -66,12 +58,12 @@ def pairwise(
     """The candidate output beats the ``baseline`` output for the same sample.
 
     ``baseline`` is a Target (its outputs are produced per sample, cost counted) or a
-    mapping of sample id → output. Score: 1.0 wins (both orders), 0.5 split or tie,
-    0.0 loses. Passes when the candidate wins or ties.
+    mapping of sample id → output. Each judged order scores 1 (candidate preferred),
+    0.5 (tie) or 0 (baseline preferred); the value is their mean, so with both orders
+    it is one of 1.0 / 0.75 / 0.5 / 0.25 / 0.0. Passes at 0.5 or above (wins or ties).
     """
     base_target: Target = baseline if isinstance(baseline, Target) else RecordedTarget(baseline)
-    identity = canonical({"v": 1, "rubric": rubric, "model": model})
-    version = hashlib.sha256(identity.encode()).hexdigest()[:16]
+    identity = {"v": 1, "rubric": rubric, "both_orders": both_orders}
 
     def ask(ctx: Context, sample_input: str, a: str, b: str) -> tuple[str, str, float, float]:
         user = USER.format(input=sample_input, a=a, b=b)
@@ -89,15 +81,23 @@ def pairwise(
     def fn(sample: Sample, output: Output, ctx: Context) -> Score:
         if ctx.providers is None:
             return Score.errored("pairwise: no providers configured")
+        try:
+            resolved = "/".join(ctx.providers.split(model))
+        except ProviderError as exc:
+            return Score.errored(str(exc))
+        version = sha256({**identity, "model": resolved})[:16]
         base = base_target.produce(sample)
         if base.error:
             return Score.errored(f"pairwise: baseline: {base.error}")
-        text = sample.input if isinstance(sample.input, str) else json.dumps(sample.input, indent=2)
-        key_material = canonical({"p": version, "i": text, "c": output.text, "b": base.text})
-        cache_key = hashlib.sha256(key_material.encode()).hexdigest()
+        text = _json_text(sample.input)
+        cache_key = sha256({"p": version, "i": text, "c": output.text, "b": base.text})
         cached = ctx.cache.get(cache_key) if ctx.cache is not None else None
         if cached is not None:
-            return cached.model_copy(update={"cost_usd": 0.0, "latency_ms": 0.0})
+            # The judge verdict is cached; the baseline was still produced (its cost counts).
+            raw = {**(cached.raw or {}), "cached": True}
+            return cached.model_copy(
+                update={"cost_usd": base.cost_usd, "latency_ms": base.latency_ms, "raw": raw}
+            )
         cost = base.cost_usd
         latency = 0.0
         points: list[float] = []
@@ -123,20 +123,32 @@ def pairwise(
         except ValueError as exc:
             return Score.errored(f"pairwise: {exc}", cost_usd=cost, latency_ms=latency)
         value = sum(points) / len(points)
-        verdict = "wins" if value == 1.0 else "ties/split" if value == 0.5 else "loses"
+        verdict = _label(value)
         score = Score(
             value=value,
             passed=value >= 0.5,
             reason=f"candidate {verdict}: " + " | ".join(r for r in reasons if r),
             cost_usd=cost,
             latency_ms=latency,
-            raw={"points": points, "orders": len(points)},
+            raw={"points": points, "orders": len(points), "judge_version": version},
         )
         if ctx.cache is not None:
             ctx.cache.set(cache_key, score)
         return score
 
     return FunctionCheck(key, fn, kind=CheckKind.COMPARISON)
+
+
+def _label(value: float) -> str:
+    if value == 1.0:
+        return "wins"
+    if value > 0.5:
+        return "mostly wins"
+    if value == 0.5:
+        return "ties/split"
+    if value > 0.0:
+        return "mostly loses"
+    return "loses"
 
 
 __all__ = ["pairwise", "parse_winner"]

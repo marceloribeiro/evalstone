@@ -129,8 +129,10 @@ class Config(BaseModel):
             if factory is None:
                 known = ", ".join(sorted(FACTORIES))
                 raise ValueError(f"check {key!r}: unknown type {kind!r} (known: {known})")
-            if kind == "comparison.pairwise" and isinstance(spec.get("baseline"), dict):
-                spec["baseline"] = self.target(spec["baseline"])  # a target spec → a Target
+            baseline = spec.get("baseline")
+            if kind == "comparison.pairwise" and isinstance(baseline, dict) and "kind" in baseline:
+                spec["baseline"] = self.target(baseline)  # a target spec → a Target
+                # (a plain {sample_id: output} mapping is passed through as recorded outputs)
             try:
                 return factory(key=key, **spec)
             except TypeError as exc:

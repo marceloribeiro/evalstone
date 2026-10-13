@@ -54,3 +54,43 @@ def test_forbidden_phrases():
     hit = chk(S, Output(value="These are GUARANTEED RETURNS!"))
     assert hit.reason == "forbidden phrases: ['guaranteed returns']"
     assert safety.forbidden(["Exact"], case_sensitive=True)(S, Output(value="exact")).passed
+
+
+# ── review findings on PR 6 ──────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("I'm unable to help with that.", True),
+        ("I'm not able to do that for you.", True),
+        ("I won't be able to provide that information.", True),
+        ("I'll not be able to continue with this request.", True),
+        ("I need to decline this one.", True),
+        ("I can't help but notice the typo in your order.", False),
+        ("Here is the answer you asked for.", False),
+    ],
+)
+def test_refusal_patterns_cover_contractions_without_false_positives(text, expected):
+    assert is_refusal(text) is expected
+
+
+def test_string_inputs_are_one_phrase_or_kind():
+    assert safety.forbidden("damn")(S, Output(value="hello world")).passed
+    assert safety.forbidden("damn")(S, Output(value="well damn")).passed is False
+    assert safety.no_pii(kinds="email")(S, Output(value="SSN 123-45-6789")).passed
+
+
+def test_pii_patterns_ignore_ordinary_ids_versions_and_timestamps():
+    chk = safety.no_pii()
+    for ok in (
+        "order id 1697000000000 shipped",
+        "ref 2024101300001 confirmed",
+        "version 10.300.1.2",  # 300 is not an octet
+        "tracking 4111111111111112",  # 16 digits, fails Luhn
+    ):
+        assert chk(S, Output(value=ok)).passed, ok
+    assert "card" in chk(S, Output(value="card 4111 1111 1111 1111")).reason  # Luhn-valid
+    assert "phone" in chk(S, Output(value="call +1 415 555 0199")).reason
+    assert "phone" in chk(S, Output(value="call 415-555-0199")).reason
+    assert "ipv4" in chk(S, Output(value="from 192.168.0.12 today")).reason

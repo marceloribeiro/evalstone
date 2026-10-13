@@ -19,7 +19,8 @@ LOOPY = Output(
 
 def test_steps_of_reads_value_or_metadata():
     assert len(tj.steps_of(GOOD)) == 2
-    assert tj.steps_of(Output(value="plain")) == []
+    assert tj.steps_of(Output(value="plain")) is None
+    assert tj.steps_of(Output(value={"steps": []})) == []
     assert len(tj.steps_of(Output(value="x", metadata={"steps": [{"tool": "a"}]}))) == 1
     assert tj.steps_of(Output(value={"trace": [{"tool": "a"}]}), key="trace")[0]["tool"] == "a"
 
@@ -56,3 +57,28 @@ def test_trajectory_checks_are_cheap_and_run_first_in_a_suite():
     )
     run = suite.run(lambda inp: GOOD.value)
     assert run.summary.pass_rate == 1.0 and run.summary.cost_usd == 0.0
+
+
+# ── review findings on PR 6 ──────────────────────────────────────────────────
+
+
+def test_missing_trajectory_is_an_error_never_a_vacuous_pass():
+    checks = (tj.max_steps(3), tj.tool_order("a", "b"), tj.no_repeated_calls(), tj.tool_called("a"))
+    for chk in checks:
+        for out in (Output(value="plain text"), Output(value={"trace": [{"tool": "a"}]})):
+            score = chk(S, out)
+            assert score.passed is False and score.error.startswith("no trajectory recorded")
+    empty = Output(value={"steps": []})
+    assert tj.max_steps(3)(S, empty).passed and tj.no_repeated_calls()(S, empty).passed
+    assert tj.steps_of(Output(value={"trace": [{"tool": "a"}]}), key="trace") is not None
+
+
+def test_non_dict_args_are_tolerated():
+    steps = [{"tool": "search", "args": "q=x"}, {"tool": "search", "args": "q=x"}]
+    raw = Output(value={"steps": steps})
+    assert tj.no_repeated_calls()(S, raw).reason.startswith("repeated call x2: search")
+    seen = []
+    tj.tool_called("search", args=lambda a: seen.append(a) or True)(S, raw)
+    assert seen[0] == {"value": "q=x"}
+    none = Output(value={"steps": [{"tool": "search"}]})
+    assert tj.no_repeated_calls()(S, none).passed

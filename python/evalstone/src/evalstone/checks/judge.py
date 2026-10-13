@@ -41,8 +41,8 @@ def _json_text(value: Any) -> str:
     return value if isinstance(value, str) else dumps(value, indent=2)
 
 
-def parse_verdict(text: str, scale: int) -> tuple[int, str]:
-    """Pull ``{"score": n, "reason": ...}`` out of a model reply, tolerating prose around it."""
+def extract_json(text: str) -> dict[str, Any]:
+    """The first JSON object in a model reply, tolerating prose around it."""
     match = re.search(r"\{.*\}", text, flags=re.DOTALL)
     if not match:
         raise ValueError(f"no JSON object in judge reply: {text[:120]!r}")
@@ -50,6 +50,14 @@ def parse_verdict(text: str, scale: int) -> tuple[int, str]:
         data = json.loads(match.group(0))
     except json.JSONDecodeError as exc:
         raise ValueError(f"invalid JSON in judge reply: {exc.msg}") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"judge reply is not a JSON object: {text[:120]!r}")
+    return data
+
+
+def parse_verdict(text: str, scale: int) -> tuple[int, str]:
+    """Pull ``{"score": n, "reason": ...}`` out of a model reply."""
+    data = extract_json(text)
     try:
         score = round(float(data["score"]))
     except (KeyError, TypeError, ValueError):
@@ -208,4 +216,4 @@ def _verdict_reason(score: Score) -> str:
     return str((score.raw or {}).get("verdict_reason", ""))
 
 
-__all__ = ["PROMPT_VERSION", "JudgeCheck", "judge", "parse_verdict"]
+__all__ = ["PROMPT_VERSION", "JudgeCheck", "extract_json", "judge", "parse_verdict"]
