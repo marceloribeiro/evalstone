@@ -48,6 +48,7 @@ class SuiteConfig(BaseModel):
     target: dict[str, Any]
     checks: list[str]
     gate: Gate | None = None
+    short_circuit: bool = False  # skip judge checks on a sample a cheap check already failed
 
     @field_validator("target")
     @classmethod
@@ -83,9 +84,14 @@ class Config(BaseModel):
             )
         return self._providers
 
-    def context(self) -> Context:
-        """The run context: model access for judges and prompt targets, plus a judge cache."""
-        return Context(providers=self.provider_registry())
+    def context(self, *, judge_model: str | None = None) -> Context:
+        """The run context: model access for judges and prompt targets, plus a judge cache.
+
+        ``judge_model`` overrides every judge's model for this context only (the
+        CLI's ``--judge-model``) — judges and pairwise comparisons, never the target
+        under test: the same suite, a different judge, one flag.
+        """
+        return Context(providers=self.provider_registry(), judge_model=judge_model)
 
     # ── loading ──────────────────────────────────────────────────────────
 
@@ -170,6 +176,7 @@ class Config(BaseModel):
             dataset=self.dataset(sc.dataset),
             checks=[self.check(k) for k in sc.checks],
             gate=sc.gate,
+            short_circuit=sc.short_circuit,
         )
         return suite, self.target(sc.target)
 

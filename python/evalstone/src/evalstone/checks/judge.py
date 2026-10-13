@@ -134,8 +134,9 @@ def judge(
         providers = ctx.providers
         if providers is None:
             return Score.errored("judge: no providers configured (ctx.providers is None)")
+        chosen = ctx.judge_model or model  # a run-time override beats the check's own model
         try:
-            resolved = "/".join(providers.split(model))
+            resolved = "/".join(providers.split(chosen))
         except ProviderError as exc:
             return Score.errored(str(exc))
         judge_version = sha256({**identity, "model": resolved})[:16]
@@ -176,7 +177,7 @@ def judge(
             )
         try:
             resp = providers.complete(
-                model,
+                chosen,
                 {
                     "system": system,
                     "messages": [ChatMessage(role="user", content=user)],

@@ -70,6 +70,19 @@ PRICES: dict[str, tuple[float, float]] = {
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-haiku-5-5": (0.10, 0.50),
     "claude-haiku-4-5": (1.0, 5.0),
+    # Google — ai.google.dev/gemini-api/docs/pricing, paid tier, ≤200k (page dated 2026-10-09)
+    "gemini-3.8-flash": (0.75, 3.75),
+    "gemini-3.6-flash": (0.75, 3.75),
+    "gemini-3.5-flash-lite": (0.30, 2.50),
+    "gemini-3.1-flash-lite": (0.25, 1.50),
+    "gemini-3.1-pro-preview": (2.00, 12.00),
+    "gemini-3-flash-preview": (0.50, 3.00),
+    "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
+    # OpenAI: the published lineup changes often and the pricing page could not be read
+    # by the tooling; add rows under `prices:` in evalstone.yaml (the gate warns when
+    # a judge model is unpriced and max_cost_usd is set).
 }
 
 
@@ -86,7 +99,13 @@ def price(
 # ── registry ──────────────────────────────────────────────────────────────────
 
 
+ADAPTERS = ("openai", "anthropic", "gemini")
+
+
 class ProviderConfig(BaseModel):
+    # Which built-in adapter speaks to this provider; defaults to the entry's name, so
+    # `openrouter: {adapter: openai, base_url: …}` and `openai: {…}` can coexist.
+    adapter: str | None = None
     base_url: str | None = None
     api_key_env: str | None = None
     api_key: str | None = Field(default=None, exclude=True, repr=False)
@@ -150,21 +169,28 @@ class Providers:
     def get(self, name: str) -> Provider:
         if name in self._instances:
             return self._instances[name]
-        cfg = self.config.get(name, ProviderConfig())
-        if name == "openai":
+        cfg = self.config.get(name)
+        adapter = cfg.adapter if cfg and cfg.adapter else name
+        if cfg is None and name not in ADAPTERS:
+            known = sorted(set(ADAPTERS) | set(self.config))
+            raise ProviderError(f"unknown provider {name!r} (known: {', '.join(known)})")
+        cfg = cfg or ProviderConfig()
+        if adapter == "openai":
             from evalstone.providers.openai_compat import OpenAICompatProvider
 
             self._instances[name] = OpenAICompatProvider(cfg, prices=self.prices)
-        elif name == "anthropic":
+        elif adapter == "anthropic":
             from evalstone.providers.anthropic_ import AnthropicProvider
 
             self._instances[name] = AnthropicProvider(cfg, prices=self.prices)
-        elif name == "gemini":
+        elif adapter == "gemini":
             from evalstone.providers.gemini import GeminiProvider
 
             self._instances[name] = GeminiProvider(cfg, prices=self.prices)
         else:
-            raise ProviderError(f"unknown provider {name!r} (known: openai, anthropic, gemini)")
+            raise ProviderError(
+                f"provider {name!r}: unknown adapter {adapter!r} (adapters: {', '.join(ADAPTERS)})"
+            )
         return self._instances[name]
 
     def complete(self, model: str | None, request_without_model: dict[str, Any]) -> ChatResponse:

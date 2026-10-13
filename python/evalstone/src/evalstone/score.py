@@ -40,6 +40,7 @@ class Score(BaseModel):
     latency_ms: float = 0.0
     error: str | None = None
     raw: Any = None
+    skipped: bool = False  # not evaluated (a short-circuited judge); counted as a failure
 
     @model_validator(mode="after")
     def _error_never_passes(self) -> Score:
@@ -67,6 +68,13 @@ class Score(BaseModel):
         kw.setdefault("reason", error)
         kw.setdefault("value", 0.0)
         return cls(passed=False, error=error, **kw)
+
+    @classmethod
+    def skip(cls, reason: str) -> Score:
+        """The check was not run on this output (``Suite(short_circuit=True)`` and a
+        contract check already failed it). A failure, not an error: it trips no
+        error-rate gate, and it is never a pass."""
+        return cls(value=0.0, passed=False, reason=reason, skipped=True)
 
     @classmethod
     def from_bool(cls, ok: bool, reason: str = "") -> Score:
@@ -110,6 +118,7 @@ class Context(BaseModel):
 
     run_id: str | None = None
     providers: Any = None  # evalstone.providers.Providers, or None when no model access
+    judge_model: str | None = None  # overrides every judge's model (not targets): --judge-model
     cache: Any = Field(default_factory=MemoryCache)  # ScoreCache; set None to disable
     extra: dict[str, Any] = Field(default_factory=dict)
 

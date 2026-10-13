@@ -16,7 +16,10 @@ class HttpProvider:
 
     def __init__(self, config: ProviderConfig, *, prices: dict | None = None, client: Any = None):
         self.base_url = (config.base_url or self.default_base_url).rstrip("/")
-        self.api_key = config.resolve_key(self.default_key_env)
+        # An entry named after its adapter (`openai:`) may fall back to the adapter's
+        # default variable; a named entry (`openrouter: {adapter: openai}`) never does, so
+        # one vendor's key is never sent to another.
+        self.api_key = config.resolve_key("" if config.adapter else self.default_key_env)
         self.headers = dict(config.headers)
         self.timeout = config.timeout
         self.prices = prices or {}
@@ -48,7 +51,12 @@ class HttpProvider:
             raise ProviderError(f"{self.name}: {type(exc).__name__}: {exc}") from exc
         latency = (time.perf_counter() - started) * 1000
         if resp.status_code >= 400:
-            raise ProviderError(f"{self.name}: HTTP {resp.status_code}: {resp.text[:300]}")
+            hint = (
+                " (no API key is configured for this provider: set api_key_env)"
+                if resp.status_code in (401, 403) and not self.api_key
+                else ""
+            )
+            raise ProviderError(f"{self.name}: HTTP {resp.status_code}: {resp.text[:300]}{hint}")
         try:
             return resp.json(), latency
         except ValueError as exc:

@@ -43,7 +43,7 @@ def test_human_check_scores_from_labels_and_errors_when_unlabelled(tmp_path):
     assert chk(S, Output(value="other")).error is not None  # changed output → not labelled
     assert chk.kind == "human" and es.checks.human is human
     suite = Suite("s", dataset=Dataset("d", [S]), checks=[chk, es.checks.length()])
-    assert suite.check_keys == ["length", "human"]  # human is not a cheap check
+    assert suite.check_keys == ["human", "length"]  # human is cheap: declaration order kept
 
 
 def test_results_carry_input_and_expected_for_review():

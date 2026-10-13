@@ -25,21 +25,32 @@ suites:
     target: { kind: callable, fn: "myapp.bot:answer" }
     checks: [must_include, short, helpful, no_apology]      # keys above or @check names
     gate: { min_pass_rate: 0.95, max_regression: 0.02, max_cost_usd: 2, max_error_rate: 0 }
+    short_circuit: true              # skip the judges on a sample a contract check already failed
 
 judges:
   default_model: anthropic/claude-haiku-5-5
 
 providers:
-  anthropic: { api_key_env: ANTHROPIC_API_KEY }
-  openai:    { base_url: https://openrouter.ai/api/v1, api_key_env: OPENROUTER_API_KEY }
-  gemini:    { api_key_env: GEMINI_API_KEY }
+  anthropic:  { api_key_env: ANTHROPIC_API_KEY }
+  openai:     { api_key_env: OPENAI_API_KEY }
+  openrouter: { adapter: openai, base_url: https://openrouter.ai/api/v1, api_key_env: OPENROUTER_API_KEY }
+  ollama:     { adapter: openai, base_url: http://localhost:11434/v1 }
+  gemini:     { api_key_env: GEMINI_API_KEY }
 
 prices:                              # USD per 1M tokens (input, output); overrides the built-in table
   my-model: [1.0, 2.0]
 ```
 
-`providers.<name>` takes `base_url`, `api_key_env`, `api_key`, `headers`,
-`timeout` (and `max_tokens_param` for OpenAI-compatible servers). The `openai`
+`providers.<name>` takes `adapter` (`openai`, `anthropic` or `gemini`; defaults
+to the entry's name), `base_url`, `api_key_env`, `api_key`, `headers`, `timeout`
+(and `max_tokens_param` for OpenAI-compatible servers). A judge model is
+`<name>/<model>`, so `openrouter/anthropic/claude-haiku-5-5` and
+`ollama/llama3.1` can sit next to `openai/…` and `anthropic/…`; `evalstone run
+--judge-model <name>/<model>` overrides every judge (never the target under
+test) for one run. A named entry needs its own `api_key_env` or `api_key`:
+only an entry named after its adapter (`openai:`, `anthropic:`, `gemini:`)
+falls back to that adapter's default variable, so one vendor's key is never
+sent to another (Ollama needs none). The `openai`
 adapter speaks to any OpenAI-compatible server, so OpenRouter, Ollama, vLLM or
 Groq are a `base_url` away. Keys come from the environment variable named by
 `api_key_env` (or the provider's default one); `api_key` sets one inline, which

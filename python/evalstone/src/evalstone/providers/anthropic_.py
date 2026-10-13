@@ -28,7 +28,7 @@ class AnthropicProvider:
         }
         if config.base_url:
             kwargs["base_url"] = config.base_url
-        key = config.resolve_key("ANTHROPIC_API_KEY")
+        key = config.resolve_key("" if config.adapter else "ANTHROPIC_API_KEY")
         if key:
             # else the SDK resolves ANTHROPIC_API_KEY or an `ant auth login` profile itself
             kwargs["api_key"] = key
