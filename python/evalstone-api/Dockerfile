@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
-COPY . .
-RUN chmod +x app/support/docker/entrypoint.sh && useradd -r -u 10001 evalstone && chown -R evalstone /srv/evalstone-api
+RUN useradd -r -u 10001 evalstone
+COPY --chown=10001:10001 . .
 USER evalstone
 
 EXPOSE 8181

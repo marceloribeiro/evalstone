@@ -53,7 +53,7 @@ center:
 ```
 
 ```bash
-pip install evalstone
+pip install ./python/evalstone      # the `center:` attach is in 0.2.0 (unreleased); from the checkout until it ships
 EVALSTONE_API_KEY=$KEY evalstone run <suite>     # judged through the center; the run is stored
 ```
 

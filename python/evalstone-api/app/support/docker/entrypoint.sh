@@ -3,17 +3,23 @@
 set -e
 
 wait_for_db() {
+  # The app's own Settings/engine: the DSN is percent-encoded (any DB_PASS works) and the
+  # secrets validator fires here, before a minute of waiting, if .env is incomplete.
   python - <<'PY'
-import os, sys, time
-import psycopg
-url = f"postgresql://{os.environ['DB_USER']}:{os.environ.get('DB_PASS','')}@{os.environ['DB_HOST']}:{os.environ.get('DB_PORT','5432')}/{os.environ['DB_NAME']}"
-for attempt in range(60):
+import sys, time
+from sqlalchemy import text
+from app.db import engine  # connect_timeout=2 is set there
+deadline = time.monotonic() + 120
+while True:
     try:
-        psycopg.connect(url, connect_timeout=2).close()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
         print("postgres: ready"); sys.exit(0)
     except Exception as exc:  # noqa: BLE001
-        print(f"postgres: waiting ({exc.__class__.__name__})"); time.sleep(2)
-sys.exit("postgres: not reachable after 120s")
+        left = deadline - time.monotonic()
+        if left <= 0:
+            sys.exit(f"postgres: not reachable after 120s ({type(exc).__name__})")
+        print(f"postgres: waiting ({type(exc).__name__}, {int(left)}s left)"); time.sleep(2)
 PY
 }
 

@@ -16,8 +16,10 @@ jobs:
       - name: write .env
         run: |
           cp env.docker.example .env
-          sed -i "s/^DB_PASS=.*/DB_PASS=ci-postgres-pass/; s/^JWT_SECRET=.*/JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')/; s/^DOCS_PASSWORD=.*/DOCS_PASSWORD=ci-docs-pass/" .env
-          echo "PROVIDER_CREDS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> .env
+          JWT=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+          CREDS=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')
+          sed -i "s|^DB_PASS=.*|DB_PASS=ci-p@ss/w0rd#1|; s|^JWT_SECRET=.*|JWT_SECRET=$JWT|; s|^PROVIDER_CREDS_KEY=.*|PROVIDER_CREDS_KEY=$CREDS|; s|^DOCS_PASSWORD=.*|DOCS_PASSWORD=ci-docs-pass|" .env
+          grep -c "=." .env   # 5 non-empty values
       - run: docker compose up -d --build --wait --wait-timeout 300
       - run: docker compose ps
       - name: the API answers and a user can register
@@ -26,7 +28,12 @@ jobs:
           curl -fsS -X POST localhost:8181/auth/register -H 'content-type: application/json' -d '{"email":"ci@example.com","password":"ci-password-1"}' | head -c 200
       - name: the worker and beat are running
         run: |
-          docker compose exec -T api celery -A app.worker.celery_app inspect ping --timeout 10
+          # --wait already covered the worker's healthcheck (its own ping); confirm from the api side too
+          for i in $(seq 1 12); do
+            docker compose exec -T api celery -A app.worker.celery_app inspect ping --timeout 5 && break
+            sleep 5
+          done
+          docker compose exec -T api celery -A app.worker.celery_app inspect ping --timeout 5
           docker compose logs beat | grep -q "beat: Starting"
       - if: always()
         run: docker compose logs --no-color api worker beat | tail -100
