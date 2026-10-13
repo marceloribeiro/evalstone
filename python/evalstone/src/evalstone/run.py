@@ -134,6 +134,19 @@ class Run(BaseModel):
     def failures(self) -> list[Result]:
         return [r for r in self.results if not r.score.passed]
 
+    def failure_lines(self, limit: int = 10) -> list[str]:
+        """Plain-text failing results: a header, then ``flag sample · check · reason``
+        for the first ``limit``. Empty when nothing failed."""
+        failures = self.failures()
+        if not failures:
+            return []
+        suffix = f", first {limit}:" if len(failures) > limit else ":"
+        lines = [f"{len(failures)} failing result(s){suffix}"]
+        for r in failures[:limit]:
+            flag = "error" if r.score.error else "fail"
+            lines.append(f"  {flag} {r.sample_id} · {r.check_key} · {r.score.reason}")
+        return lines
+
     def table(self) -> str:
         """A plain-text summary: per-check rows, then the totals line."""
         s = self.summary

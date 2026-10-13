@@ -48,8 +48,12 @@ def test_support_bot(run):  # optional body sees the Run
 ```
 
 Fixtures `evalstone_run` / `evalstone_gate` / `evalstone_config`; options
-`--evalstone-config`, `--evalstone-baseline`. The plugin registers itself when
-evalstone is installed; pytest is not a runtime dependency of the library.
+`--evalstone-config`, `--evalstone-baseline` (a report, or a directory of them).
+Each suite writes `evalstone-report.<suite>.json` beside the config; paths are
+relative to the config's directory. A suite without a `gate:` fails the gated
+forms. Works on test methods too. The plugin registers itself when evalstone is
+installed, imports nothing of evalstone until a fixture runs, and pytest is not
+a runtime dependency of the library.
 
 ## MCP server
 
