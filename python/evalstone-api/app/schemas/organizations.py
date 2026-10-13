@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field
 
 from app.models import Role
 from app.schemas.auth import UserOut
@@ -51,17 +51,10 @@ class InvitationOut(BaseModel):
     id: uuid.UUID
     email: str
     role: Role
-    status: Literal["pending", "accepted"]
     created_at: datetime
     accepted_at: datetime | None
 
-    @classmethod
-    def of(cls, inv) -> "InvitationOut":
-        return cls(
-            id=inv.id,
-            email=inv.email,
-            role=inv.role,
-            status="accepted" if inv.accepted_at else "pending",
-            created_at=inv.created_at,
-            accepted_at=inv.accepted_at,
-        )
+    @computed_field
+    @property
+    def status(self) -> Literal["pending", "accepted"]:
+        return "accepted" if self.accepted_at else "pending"

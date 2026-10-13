@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import Conflict, Invalid, NotFound
 from app.models import IngestKey, Organization, Project, User
+
 from app.security import hash_ingest_key, new_ingest_key
+
+LAST_USED_RESOLUTION = timedelta(seconds=60)  # ingest is the hot path; one stamp per minute
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -136,6 +139,11 @@ def resolve_ingest_key(db: Session, secret: str) -> Project | None:
     project = db.get(Project, key.project_id)
     if project is None or project.deleted_at is not None:
         return None
-    key.last_used_at = datetime.now(UTC)
-    db.commit()
+    org = db.get(Organization, project.organization_id)
+    if org is None or org.deleted_at is not None:
+        return None  # a deleted org's keys stop working even if a project row slipped through
+    now = datetime.now(UTC)
+    if key.last_used_at is None or now - key.last_used_at > LAST_USED_RESOLUTION:
+        key.last_used_at = now
+        db.commit()
     return project

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from sqlalchemy.exc import IntegrityError
 
 from app import __version__
 from app.config import get_settings
@@ -38,6 +39,12 @@ app.include_router(projects.router)
 def domain_error_handler(_: Request, err: DomainError) -> JSONResponse:
     headers = {"WWW-Authenticate": "Bearer"} if err.status == 401 else None
     return JSONResponse(status_code=err.status, content={"detail": err.detail}, headers=headers)
+
+
+@app.exception_handler(IntegrityError)
+def integrity_error_handler(_: Request, err: IntegrityError) -> JSONResponse:
+    """Services pre-check uniqueness for a good message; a concurrent insert still lands here."""
+    return JSONResponse(status_code=409, content={"detail": "conflicts with an existing record"})
 
 
 _basic = HTTPBasic()
