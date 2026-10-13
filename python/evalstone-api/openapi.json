@@ -1977,6 +1977,48 @@
         "title": "MonitorUpdate",
         "type": "object"
       },
+      "OrganizationDetailOut": {
+        "description": "`GET /organizations/{id}`: the organization plus the caller's role (the web gates on it).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "website_url",
+          "created_at",
+          "role"
+        ],
+        "title": "OrganizationDetailOut",
+        "type": "object"
+      },
       "OrganizationIn": {
         "properties": {
           "name": {
@@ -4398,7 +4440,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrganizationOut"
+                  "$ref": "#/components/schemas/OrganizationDetailOut"
                 }
               }
             },

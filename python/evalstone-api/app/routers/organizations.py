@@ -11,6 +11,7 @@ from app.schemas.organizations import (
     InvitationOut,
     MemberOut,
     MemberUpdate,
+    OrganizationDetailOut,
     OrganizationIn,
     OrganizationOut,
     OrganizationUpdate,
@@ -32,9 +33,11 @@ def create_organization(
     return svc.create(db, owner=user, **body.model_dump())
 
 
-@router.get("/{organization_id}", response_model=OrganizationOut)
+@router.get("/{organization_id}", response_model=OrganizationDetailOut)
 def get_organization(ctx: MemberContext = Depends(get_member)):
-    return ctx.organization
+    return OrganizationDetailOut(
+        **OrganizationOut.model_validate(ctx.organization).model_dump(), role=ctx.role
+    )
 
 
 @router.patch("/{organization_id}", response_model=OrganizationOut)

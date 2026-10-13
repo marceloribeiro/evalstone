@@ -1,0 +1,78 @@
+# evalstone-web — the center web app (Next.js, port 8182, app.evalstone.com).
+set dotenv-load := true
+
+SITE := "evalstone-web"
+
+default:
+    @just --list
+
+install:
+    npm install
+
+# Dev server on http://localhost:8182 (needs the API: `just up` in python/evalstone-api).
+up:
+    npm run dev
+
+build:
+    npm run build
+
+start:
+    npm run start
+
+lint:
+    npm run lint
+
+typecheck:
+    npm run types:check
+
+# Lint + typecheck — run before pushing (same as CI).
+check: lint typecheck
+
+formatters-fix:
+    npm run lint:fix
+
+# Playwright E2E against a production build (the API must be running on NEXT_PUBLIC_API_URL).
+test *args:
+    npx playwright test {{ args }}
+
+test-ui:
+    npx playwright test --ui
+
+test-headed:
+    npx playwright test --headed
+
+test-debug:
+    npx playwright test --debug
+
+# ─── Deploy (homemarket-web01; docs/features/COMPLETE_SERVER_BASED.md) ──────
+
+# Build locally, rsync the standalone bundle, restart systemd (needs .env.production locally).
+deploy env="production":
+    chmod +x deploy.sh && ./deploy.sh {{env}}
+
+setup-nginx-http:
+    #!/usr/bin/env bash
+    set -e
+    SERVER=$(node -e "const c=require('./deploy.json'); console.log(c.production.server)")
+    DEPLOY_LOCATION=$(node -e "const c=require('./deploy.json'); console.log(c.production.deploy_location)")
+    ssh "$SERVER" "set -e; cd $DEPLOY_LOCATION/current && sudo cp nginx/nginx-http.conf /opt/nginx/conf/sites-available/{{ SITE }}.conf && sudo ln -sf /opt/nginx/conf/sites-available/{{ SITE }}.conf /opt/nginx/conf/sites-enabled/{{ SITE }}.conf && sudo /opt/nginx/sbin/nginx -t && (sudo /opt/nginx/sbin/nginx -s reload 2>/dev/null || sudo /opt/nginx/sbin/nginx)"
+    echo "Nginx HTTP config installed on server."
+
+setup-nginx-https:
+    #!/usr/bin/env bash
+    set -e
+    SERVER=$(node -e "const c=require('./deploy.json'); console.log(c.production.server)")
+    DEPLOY_LOCATION=$(node -e "const c=require('./deploy.json'); console.log(c.production.deploy_location)")
+    ssh "$SERVER" "set -e; cd $DEPLOY_LOCATION/current && sudo cp nginx/nginx-https.conf /opt/nginx/conf/sites-available/{{ SITE }}.conf && sudo ln -sf /opt/nginx/conf/sites-available/{{ SITE }}.conf /opt/nginx/conf/sites-enabled/{{ SITE }}.conf && sudo /opt/nginx/sbin/nginx -t && (sudo /opt/nginx/sbin/nginx -s reload 2>/dev/null || sudo /opt/nginx/sbin/nginx)"
+    echo "Nginx HTTPS config installed on server."
+
+setup-systemd:
+    #!/usr/bin/env bash
+    set -e
+    SERVER=$(node -e "const c=require('./deploy.json'); console.log(c.production.server)")
+    DEPLOY_LOCATION=$(node -e "const c=require('./deploy.json'); console.log(c.production.deploy_location)")
+    for unit in systemd/*.service; do
+      name=$(basename "$unit")
+      ssh "$SERVER" "sudo cp $DEPLOY_LOCATION/current/$unit /etc/systemd/system/$name && sudo systemctl daemon-reload && sudo systemctl enable $name"
+    done
+    echo "Systemd units installed on server."

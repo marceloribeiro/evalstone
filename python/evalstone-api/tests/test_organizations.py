@@ -19,6 +19,19 @@ def test_creator_becomes_owner_and_lists_their_orgs(client, org):
     assert [o["id"] for o in mine] == [org["id"]]
 
 
+def test_organization_detail_reports_the_callers_role(client, org, register):
+    """The web gates admin-only panels (ingest keys) on this field instead of eating 403s."""
+    url = f"/organizations/{org['id']}"
+    assert client.get(url, headers=org["headers"]).json()["role"] == "owner"
+    member_h, _ = register("m2@acme.example.com")
+    client.post(
+        f"/organizations/{org['id']}/invitations",
+        json={"email": "m2@acme.example.com"},
+        headers=org["headers"],
+    )
+    assert client.get(url, headers=member_h).json()["role"] == "member"
+
+
 def test_outsiders_get_404_not_403(client, org, register):
     other, _ = register("stranger@x.example.com")
     assert client.get(f"/organizations/{org['id']}", headers=other).status_code == 404
