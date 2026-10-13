@@ -6,7 +6,7 @@ Engineering-focused snapshot. Not a product commitment.
 
 - **Site + learning center** (`javascript/evalstone-site`): landing page and the
   "Evals 101" course on evalstone.com.
-- **Library 0.1.0** (`python/evalstone`): datasets, deterministic / judge / RAG /
+- **Library** (first release 0.1.0; `python/evalstone`): datasets, deterministic / judge / RAG /
   safety / pairwise / trajectory checks, targets, suites, runs, gates, CLI,
   provider adapters, `samples/rag-bot`. Shipped as PRs #1–#7. **On PyPI as
   0.1.0** (2026-10-13, tag `lib-v0.1.0`, trusted publisher via

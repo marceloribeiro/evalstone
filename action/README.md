@@ -44,3 +44,20 @@ so a suite name or path taken from the event payload cannot run commands.
 
 The comment is rendered by `evalstone show <report> --markdown`, so the same
 text is available locally.
+
+## Releasing the action
+
+The action has no package: a release is a tag on this repository. `action-v0`
+is the floating major tag users pin; `action-vX.Y.Z` pins one release. Nothing
+moves `action-v0` automatically (`release.yml` publishes the library on `lib-v*`
+tags only), so an action release is these two commands on the merged `main`:
+
+```bash
+git tag -a action-v0.2.0 -m "Evalstone GitHub Action 0.2.0" && git push origin action-v0.2.0
+git tag -fa action-v0 -m "Evalstone GitHub Action, floating major tag" && git push --force origin action-v0
+```
+
+A breaking change to the inputs or outputs gets `action-v1`, and the snippets
+in these docs change with it. There is exactly one `uses:` ref across the docs
+and READMEs; `python/evalstone/tests/test_docs.py` fails when a second one
+appears.
