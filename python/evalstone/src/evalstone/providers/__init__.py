@@ -130,6 +130,14 @@ class Providers:
         """Install a provider instance under ``name`` (tests inject fakes this way)."""
         self._instances[name] = provider
 
+    def close(self) -> None:
+        """Close every adapter created so far (their HTTP clients) and forget them."""
+        for provider in self._instances.values():
+            close = getattr(provider, "close", None)
+            if callable(close):
+                close()
+        self._instances.clear()
+
     def split(self, model: str | None) -> tuple[str, str]:
         model = model or self.default_model
         if not model:
