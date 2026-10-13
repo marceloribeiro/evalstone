@@ -21,15 +21,15 @@ from sqlalchemy.orm import Session
 from app.errors import Conflict, Invalid, NotFound
 from app.models import (
     DatasetVersion,
-    Label,
     LabelQueue,
     LabelTask,
+    OrganizationMember,
     Project,
     Run,
     RunResult,
     User,
 )
-from app.models.label_queue import QUEUE_KINDS
+from app.models.label_queue import QUEUE_KINDS, TASK_STATUSES
 from app.services import datasets as dataset_svc
 from app.services import labels as label_svc
 from app.services import runs as run_svc
@@ -45,19 +45,31 @@ def _hash_of(output_json: dict[str, Any]) -> str:
 
 
 def _grade_items(db: Session, run: Run, *, check_key: str | None, failed_only: bool) -> list[dict]:
-    rows, _ = run_svc.list_results(
-        db,
-        run,
-        check_key=check_key or None,
-        failed_only=failed_only,
-        offset=0,
-        limit=MAX_TASKS_PER_QUEUE + 1,
+    """One task per DISTINCT sample (whatever the number of checks); capped before building."""
+    cond = [RunResult.run_id == run.id]
+    if check_key:
+        cond.append(RunResult.check_key == check_key)
+    if failed_only:
+        cond.append(RunResult.passed.is_(False))
+    keys = list(
+        db.scalars(
+            select(RunResult.sample_key)
+            .where(*cond)
+            .group_by(RunResult.sample_key)
+            .order_by(RunResult.sample_key)
+            .limit(MAX_TASKS_PER_QUEUE + 1)
+        ).all()
     )
-    seen: set[str] = set()
-    items = []
+    _cap(len(keys))
+    rows = db.scalars(
+        select(RunResult)
+        .where(*cond, RunResult.sample_key.in_(keys))
+        .order_by(RunResult.sample_key, RunResult.check_key)
+    ).all()
+    items, seen = [], set()
     for r in rows:
         if r.sample_key in seen:
-            continue  # one task per sample, whatever the number of checks
+            continue  # the first (alphabetical) check's result carries the output
         seen.add(r.sample_key)
         items.append(
             {
@@ -77,28 +89,44 @@ def _grade_items(db: Session, run: Run, *, check_key: str | None, failed_only: b
     return items
 
 
+def _cap(n: int) -> None:
+    if n > MAX_TASKS_PER_QUEUE:
+        raise Invalid(f"at most {MAX_TASKS_PER_QUEUE} tasks per queue; narrow the source")
+    if n == 0:
+        raise Invalid("the source yields no tasks")
+
+
 def _compare_items(db: Session, a: Run, b: Run) -> list[dict]:
-    ra = {r.sample_key: r for r in db.scalars(select(RunResult).where(RunResult.run_id == a.id))}
-    rb = {r.sample_key: r for r in db.scalars(select(RunResult).where(RunResult.run_id == b.id))}
+    """One task per sample both runs share; the shared-key count is checked before loading."""
+    ka = select(RunResult.sample_key).where(RunResult.run_id == a.id)
+    kb = select(RunResult.sample_key).where(RunResult.run_id == b.id)
+    shared = sorted(db.scalars(ka.intersect(kb).limit(MAX_TASKS_PER_QUEUE + 1)).all())
+    _cap(len(shared))
+
+    def first_results(run: Run) -> dict[str, RunResult]:
+        out: dict[str, RunResult] = {}
+        for r in db.scalars(
+            select(RunResult)
+            .where(RunResult.run_id == run.id, RunResult.sample_key.in_(shared))
+            .order_by(RunResult.sample_key, RunResult.check_key)
+        ):
+            out.setdefault(r.sample_key, r)
+        return out
+
+    first_a, first_b = first_results(a), first_results(b)
     items = []
-    for key in sorted(set(ra) & set(rb)):
+    for key in shared:
+        ra, rb = first_a[key], first_b[key]
+        hash_a, hash_b = _hash_of(ra.output), _hash_of(rb.output)
         items.append(
             {
                 "sample_key": key,
-                "output_hash": _hash_of(ra[key].output),
+                "output_hash": hash_a,
                 "payload": {
-                    "input": ra[key].input,
-                    "expected": ra[key].expected,
-                    "a": {
-                        "run_id": str(a.id),
-                        "output": ra[key].output,
-                        "hash": _hash_of(ra[key].output),
-                    },
-                    "b": {
-                        "run_id": str(b.id),
-                        "output": rb[key].output,
-                        "hash": _hash_of(rb[key].output),
-                    },
+                    "input": ra.input,
+                    "expected": ra.expected,
+                    "a": {"run_id": str(a.id), "output": ra.output, "hash": hash_a},
+                    "b": {"run_id": str(b.id), "output": rb.output, "hash": hash_b},
                 },
             }
         )
@@ -107,6 +135,7 @@ def _compare_items(db: Session, a: Run, b: Run) -> list[dict]:
 
 def _verify_items(db: Session, version: DatasetVersion) -> list[dict]:
     rows, _ = dataset_svc.version_samples(db, version, offset=0, limit=MAX_TASKS_PER_QUEUE + 1)
+    _cap(len(rows))
     return [
         {
             "sample_key": s.sample_key,
@@ -139,6 +168,10 @@ def create(
         raise Invalid(f"kind must be one of {', '.join(QUEUE_KINDS)}")
     if scale < 2 or scale > 10:
         raise Invalid("scale must be 2 (pass/fail) .. 10")
+    if kind == "compare" and check_key:
+        raise Invalid(
+            "a compare queue stores verdicts under 'compare:<run_b>'; leave check_key empty"
+        )
     if kind == "grade":
         run = run_svc.get_run(db, project, _uuid(source.get("run_id"), "source.run_id"))
         items = _grade_items(
@@ -154,12 +187,8 @@ def create(
         ds = dataset_svc.get_dataset(
             db, project, _uuid(source.get("dataset_id"), "source.dataset_id")
         )
-        version = dataset_svc.get_version(db, ds, int(source.get("version") or 0))
+        version = dataset_svc.get_version(db, ds, _int(source.get("version"), "source.version"))
         items = _verify_items(db, version)
-    if not items:
-        raise Invalid("the source yields no tasks")
-    if len(items) > MAX_TASKS_PER_QUEUE:
-        raise Invalid(f"at most {MAX_TASKS_PER_QUEUE} tasks per queue; narrow the source")
     queue = LabelQueue(
         project_id=project.id,
         name=name,
@@ -181,6 +210,15 @@ def create(
     db.commit()
     db.refresh(queue)
     return queue
+
+
+def _int(value: Any, where: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int | str) or str(value).strip() == "":
+        raise Invalid(f"{where} must be an integer")
+    try:
+        return int(str(value))
+    except ValueError as err:
+        raise Invalid(f"{where} must be an integer") from err
 
 
 def _uuid(value: Any, where: str) -> uuid.UUID:
@@ -239,6 +277,8 @@ def list_tasks(
 ) -> tuple[list[LabelTask], int]:
     q = select(LabelTask).where(LabelTask.queue_id == queue.id)
     if status:
+        if status not in TASK_STATUSES:
+            raise Invalid(f"status must be one of {', '.join(TASK_STATUSES)}")
         q = q.where(LabelTask.status == status)
     if assignee_user_id is not None:
         q = q.where(LabelTask.assignee_user_id == assignee_user_id)
@@ -257,10 +297,26 @@ def get_task(db: Session, project: Project, task_id: uuid.UUID) -> LabelTask:
 # --- assignment -------------------------------------------------------------------------------
 
 
-def assign(db: Session, queue: LabelQueue, user_ids: list[uuid.UUID]) -> int:
-    """Round-robin the UNASSIGNED pending tasks over `user_ids`; returns how many were assigned."""
+def _members_only(db: Session, project: Project, user_ids: list[uuid.UUID]) -> None:
+    members = set(
+        db.scalars(
+            select(OrganizationMember.user_id).where(
+                OrganizationMember.organization_id == project.organization_id,
+                OrganizationMember.user_id.in_(user_ids),
+                OrganizationMember.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    unknown = sorted(str(u) for u in set(user_ids) - members)
+    if unknown:
+        raise Invalid(f"not members of this organization: {', '.join(unknown)}")
+
+
+def assign(db: Session, project: Project, queue: LabelQueue, user_ids: list[uuid.UUID]) -> int:
+    """Round-robin the UNASSIGNED pending tasks over `user_ids` (org members); returns the count."""
     if not user_ids:
         raise Invalid("give at least one user")
+    _members_only(db, project, user_ids)
     pending = list(
         db.scalars(
             select(LabelTask)
@@ -273,10 +329,29 @@ def assign(db: Session, queue: LabelQueue, user_ids: list[uuid.UUID]) -> int:
             .with_for_update(skip_locked=True)
         ).all()
     )
+    now = datetime.now(UTC)
     for i, task in enumerate(pending):
-        task.assignee_user_id = user_ids[i % len(user_ids)]
+        task.assignee_user_id, task.claimed_at = user_ids[i % len(user_ids)], now
     db.commit()
     return len(pending)
+
+
+def unassign(db: Session, queue: LabelQueue, user_ids: list[uuid.UUID] | None) -> int:
+    """Release pending tasks held by `user_ids` (every assignee when None) back to the pool."""
+    q = (
+        update(LabelTask)
+        .where(
+            LabelTask.queue_id == queue.id,
+            LabelTask.status == "pending",
+            LabelTask.assignee_user_id.is_not(None),
+        )
+        .values(assignee_user_id=None, claimed_at=None)
+    )
+    if user_ids:
+        q = q.where(LabelTask.assignee_user_id.in_(user_ids))
+    n = db.execute(q).rowcount
+    db.commit()
+    return n
 
 
 def claim_next(db: Session, queue: LabelQueue, user: User) -> LabelTask | None:
@@ -295,6 +370,9 @@ def claim_next(db: Session, queue: LabelQueue, user: User) -> LabelTask | None:
         .limit(1)
     )
     if mine is not None:
+        if mine.claimed_at is None:
+            mine.claimed_at = datetime.now(UTC)
+            db.commit()
         return mine
     row = db.scalar(
         update(LabelTask)
@@ -337,9 +415,28 @@ def _value_from(
     return value, (passed if passed is not None else grade >= level), grade
 
 
+def _guard(queue: LabelQueue, task: LabelTask, user: User) -> None:
+    """The invariants every verdict on a task shares (answer and skip alike)."""
+    if task.queue_id != queue.id:
+        raise NotFound("task not found in this queue")
+    if queue.status != "open":
+        raise Conflict("queue is closed")
+    if task.status != "pending":
+        raise Conflict(f"task already {task.status}")
+    if task.assignee_user_id not in (None, user.id):
+        raise Conflict("task is assigned to someone else")
+
+
+def compare_check_key(task: LabelTask) -> str:
+    """A compare verdict is a label on output A **relative to run B**, under its own check
+    key, so it never overwrites or masquerades as an absolute grade of A."""
+    return f"compare:{task.payload['b']['run_id']}"
+
+
 def complete(
     db: Session,
     *,
+    project: Project,
     queue: LabelQueue,
     task: LabelTask,
     user: User,
@@ -348,14 +445,7 @@ def complete(
     notes: str,
     winner: str | None,
 ) -> LabelTask:
-    if queue.status != "open":
-        raise Conflict("queue is closed")
-    if task.queue_id != queue.id:
-        raise NotFound("task not found in this queue")
-    if task.status == "done":
-        raise Conflict("task already done")
-    if task.assignee_user_id not in (None, user.id):
-        raise Conflict("task is assigned to someone else")
+    _guard(queue, task, user)
     raw: dict[str, Any] = {"queue_id": str(queue.id), "task_id": str(task.id)}
     if queue.kind == "compare":
         if winner not in ("a", "b", "tie"):
@@ -366,9 +456,10 @@ def complete(
             "a": task.payload["a"]["hash"],
             "b": task.payload["b"]["hash"],
         }
-        grade_raw: Any = winner
+        check, grade_raw = compare_check_key(task), winner
     else:
         value, ok, grade_raw = _value_from(queue, grade=grade, passed=passed)
+        check = queue.check_key or None
     raw["grade"] = grade_raw
     label = LibLabel(
         sample_id=task.sample_key,
@@ -376,33 +467,22 @@ def complete(
         value=value,
         passed=ok,
         notes=notes,
-        check=queue.check_key or None,
+        check=check,
         labeler=user.email,
         raw=raw,
     )
-    project = db.get(Project, task.project_id)
-    label_svc.upsert(db, project=project, labels=[label], labeler_user=user)
-    stored = label_svc.lookup(
-        db,
-        project,
-        sample_key=task.sample_key,
-        output_hash=task.output_hash,
-        check=queue.check_key or None,
-    )
-    task.status, task.done_at, task.label_id = (
-        "done",
-        datetime.now(UTC),
-        stored.id if stored else None,
-    )
+    ids = label_svc.upsert(db, project=project, labels=[label], labeler_user=user)
+    task.status, task.done_at, task.label_id = "done", datetime.now(UTC), ids[0]
     task.assignee_user_id = task.assignee_user_id or user.id
     db.commit()
     db.refresh(task)
     return task
 
 
-def skip(db: Session, task: LabelTask, user: User, *, reason: str = "") -> LabelTask:
-    if task.status == "done":
-        raise Conflict("task already done")
+def skip(
+    db: Session, queue: LabelQueue, task: LabelTask, user: User, *, reason: str = ""
+) -> LabelTask:
+    _guard(queue, task, user)
     task.status = "skipped"
     task.payload = {**task.payload, "skip_reason": reason}
     task.assignee_user_id = task.assignee_user_id or user.id
@@ -419,7 +499,3 @@ def close(db: Session, queue: LabelQueue, *, status: str) -> LabelQueue:
     db.commit()
     db.refresh(queue)
     return queue
-
-
-def label_of(db: Session, task: LabelTask) -> Label | None:
-    return db.get(Label, task.label_id) if task.label_id else None

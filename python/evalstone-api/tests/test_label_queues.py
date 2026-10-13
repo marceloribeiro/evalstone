@@ -123,13 +123,18 @@ def test_compare_queue_records_the_winner(client, project, run):
     done = client.post(
         _q(project, f"/{qid}/tasks/{t['id']}/answer"), json={"winner": "b"}, headers=h
     ).json()
-    label = client.get(
+    base = {"sample_key": t["sample_key"], "output_hash": t["output_hash"]}
+    lookup = client.get(
         f"/projects/{project['id']}/labels/lookup",
-        params={"sample_key": t["sample_key"], "output_hash": t["output_hash"]},
+        params={**base, "check": f"compare:{run_b}"},  # relative to run B, its own slot
         headers=h,
-    ).json()
+    )
+    assert lookup.status_code == 200, lookup.text
+    label = lookup.json()
     assert label["value"] == 0.0 and label["raw"]["comparison"]["winner"] == "b"
     assert done["label_id"] == label["id"]
+    overall = client.get(f"/projects/{project['id']}/labels/lookup", params=base, headers=h)
+    assert overall.status_code == 404  # the absolute grade of output A is untouched
     same = client.post(
         _q(project),
         json={"name": "x", "kind": "compare", "source": {"run_a": run, "run_b": run}},
@@ -325,3 +330,143 @@ def test_bad_sources(client, project, run):
     )
     assert empty.status_code == 422 and "no tasks" in empty.json()["detail"]
     assert svc.MAX_TASKS_PER_QUEUE == 5000
+
+
+# --- regressions from the #35 review ---------------------------------------------------------
+
+
+def test_grade_queue_counts_samples_not_results(client, project, run, monkeypatch):
+    monkeypatch.setattr(svc, "MAX_TASKS_PER_QUEUE", 8)
+    h = project["headers"]
+    r = client.post(
+        _q(project), json={"name": "g", "kind": "grade", "source": {"run_id": run}}, headers=h
+    )
+    assert r.status_code == 422 and "at most 8" in r.json()["detail"]  # 10 samples, 40 results
+    monkeypatch.setattr(svc, "MAX_TASKS_PER_QUEUE", 10)
+    r = client.post(
+        _q(project), json={"name": "g", "kind": "grade", "source": {"run_id": run}}, headers=h
+    )
+    assert r.status_code == 201 and r.json()["task_count"] == 10  # every sample, none dropped
+
+
+def test_skip_enforces_the_same_invariants_as_answer(client, project, run, register):
+    h = project["headers"]
+    q1 = client.post(
+        _q(project), json={"name": "q1", "kind": "grade", "source": {"run_id": run}}, headers=h
+    ).json()["id"]
+    q2 = client.post(
+        _q(project), json={"name": "q2", "kind": "grade", "source": {"run_id": run}}, headers=h
+    ).json()["id"]
+    t1 = client.post(_q(project, f"/{q1}/next"), headers=h).json()
+    wrong_queue = client.post(_q(project, f"/{q2}/tasks/{t1['id']}/skip"), json={}, headers=h)
+    assert wrong_queue.status_code == 404
+    other_h, _ = register("o@acme.example.com")
+    client.post(
+        f"/organizations/{project['org']['id']}/invitations",
+        json={"email": "o@acme.example.com"},
+        headers=h,
+    )
+    someone_else = client.post(
+        _q(project, f"/{q1}/tasks/{t1['id']}/skip"), json={}, headers=other_h
+    )
+    assert someone_else.status_code == 409
+    client.patch(_q(project, f"/{q1}"), json={"status": "closed"}, headers=h)
+    assert (
+        client.post(_q(project, f"/{q1}/tasks/{t1['id']}/skip"), json={}, headers=h).status_code
+        == 409
+    )
+
+
+def test_assign_requires_members_and_unassign_releases(client, project, run, register):
+    import uuid
+
+    h = project["headers"]
+    qid = client.post(
+        _q(project), json={"name": "g", "kind": "grade", "source": {"run_id": run}}, headers=h
+    ).json()["id"]
+    _, stranger = register("s@x.example.com")
+    r = client.post(_q(project, f"/{qid}/assign"), json={"user_ids": [stranger["id"]]}, headers=h)
+    assert r.status_code == 422 and "not members" in r.json()["detail"]
+    r = client.post(
+        _q(project, f"/{qid}/assign"), json={"user_ids": [str(uuid.uuid4())]}, headers=h
+    )
+    assert r.status_code == 422
+    me = project["org"]["user"]["id"]
+    assert client.post(
+        _q(project, f"/{qid}/assign"), json={"user_ids": [me]}, headers=h
+    ).json() == {"assigned": 10}
+    tasks = client.get(_q(project, f"/{qid}/tasks"), params={"assignee": "me"}, headers=h).json()[
+        "items"
+    ]
+    assert all(t["claimed_at"] for t in tasks)  # assignment stamps claimed_at
+    assert client.get(_q(project, f"/{qid}/progress"), headers=h).json()["claimed"] == 10
+    r = client.post(_q(project, f"/{qid}/unassign"), json={"user_ids": None}, headers=h)
+    assert r.json() == {"released": 10}
+    assert client.get(_q(project, f"/{qid}/progress"), headers=h).json()["claimed"] == 0
+
+
+def test_verify_version_must_be_an_integer(client, project):
+    h = project["headers"]
+    did = client.post(f"/projects/{project['id']}/datasets", json={"name": "g"}, headers=h).json()[
+        "id"
+    ]
+    client.post(
+        f"/projects/{project['id']}/datasets/{did}/versions",
+        json={"samples": [{"input": "x", "expected": "y"}]},
+        headers=h,
+    )
+    for bad in ("latest", 1.9, None, True):
+        r = client.post(
+            _q(project),
+            json={"name": "v", "kind": "verify", "source": {"dataset_id": did, "version": bad}},
+            headers=h,
+        )
+        assert r.status_code == 422, bad
+    ok = client.post(
+        _q(project),
+        json={"name": "v", "kind": "verify", "source": {"dataset_id": did, "version": "1"}},
+        headers=h,
+    )
+    assert ok.status_code == 201
+
+
+def test_compare_queue_refuses_a_check_key(client, project, run):
+    h = project["headers"]
+    other = copy.deepcopy(REPORT)
+    other["id"] = "cccccccccccc"
+    run_b = _push(client, project, other)
+    body = {
+        "name": "x",
+        "kind": "compare",
+        "source": {"run_a": run, "run_b": run_b},
+        "check_key": "helpful",
+    }
+    r = client.post(_q(project), json=body, headers=h)
+    assert r.status_code == 422 and "compare:<run_b>" in r.json()["detail"]
+
+
+def test_bad_assignee_and_status_filters_are_422(client, project, run):
+    h = project["headers"]
+    qid = client.post(
+        _q(project), json={"name": "g", "kind": "grade", "source": {"run_id": run}}, headers=h
+    ).json()["id"]
+    assert (
+        client.get(_q(project, f"/{qid}/tasks"), params={"assignee": "bob"}, headers=h).status_code
+        == 422
+    )
+    assert (
+        client.get(
+            _q(project, f"/{qid}/tasks"), params={"status": "reopened"}, headers=h
+        ).status_code
+        == 422
+    )
+
+
+def test_mine_first_claim_stamps_claimed_at(client, project, run):
+    h = project["headers"]
+    qid = client.post(
+        _q(project), json={"name": "g", "kind": "grade", "source": {"run_id": run}}, headers=h
+    ).json()["id"]
+    first = client.post(_q(project, f"/{qid}/next"), headers=h).json()
+    again = client.post(_q(project, f"/{qid}/next"), headers=h).json()
+    assert again["id"] == first["id"] and again["claimed_at"] is not None

@@ -1,11 +1,11 @@
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import ProjectContext, get_project_member, require_project
-from app.errors import NotFound
 from app.models import Role
 from app.schemas.label_queues import (
     AnswerIn,
@@ -17,6 +17,7 @@ from app.schemas.label_queues import (
     SkipIn,
     TaskOut,
     TaskPage,
+    UnassignIn,
 )
 from app.services import label_queues as svc
 
@@ -76,29 +77,34 @@ def assign_tasks(
     db: Session = Depends(get_db),
 ):
     """Round-robin the unassigned pending tasks over the given members."""
-    n = svc.assign(db, svc.get_queue(db, ctx.project, queue_id), body.user_ids)
+    n = svc.assign(db, ctx.project, svc.get_queue(db, ctx.project, queue_id), body.user_ids)
     return {"assigned": n}
+
+
+@router.post(_q + "/{queue_id}/unassign")
+def unassign_tasks(
+    queue_id: uuid.UUID,
+    body: UnassignIn,
+    ctx: ProjectContext = Depends(require_project(Role.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    """Release pending tasks held by the given members (or by everyone) back to the pool."""
+    n = svc.unassign(db, svc.get_queue(db, ctx.project, queue_id), body.user_ids)
+    return {"released": n}
 
 
 @router.get(_q + "/{queue_id}/tasks", response_model=TaskPage)
 def list_tasks(
     queue_id: uuid.UUID,
-    status: str | None = Query(None, pattern="^(pending|done|skipped)$"),
-    assignee: str | None = Query(None, description="'me' or a user id"),
+    status: str | None = Query(None),
+    assignee: uuid.UUID | Literal["me"] | None = Query(None, description="'me' or a user id"),
     offset: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     ctx: ProjectContext = Depends(get_project_member),
     db: Session = Depends(get_db),
 ):
     queue = svc.get_queue(db, ctx.project, queue_id)
-    who = None
-    if assignee == "me":
-        who = ctx.user.id
-    elif assignee:
-        try:
-            who = uuid.UUID(assignee)
-        except ValueError as err:
-            raise NotFound("assignee not found") from err
+    who = ctx.user.id if assignee == "me" else assignee
     rows, total = svc.list_tasks(
         db, queue, status=status, assignee_user_id=who, offset=offset, limit=limit
     )
@@ -130,6 +136,7 @@ def answer_task(
     task = svc.get_task(db, ctx.project, task_id)
     return svc.complete(
         db,
+        project=ctx.project,
         queue=queue,
         task=task,
         user=ctx.user,
@@ -148,5 +155,6 @@ def skip_task(
     ctx: ProjectContext = Depends(get_project_member),
     db: Session = Depends(get_db),
 ):
-    svc.get_queue(db, ctx.project, queue_id)
-    return svc.skip(db, svc.get_task(db, ctx.project, task_id), ctx.user, reason=body.reason)
+    queue = svc.get_queue(db, ctx.project, queue_id)
+    task = svc.get_task(db, ctx.project, task_id)
+    return svc.skip(db, queue, task, ctx.user, reason=body.reason)

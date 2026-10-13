@@ -52,6 +52,12 @@ class AssignIn(BaseModel):
     user_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
 
 
+class UnassignIn(BaseModel):
+    user_ids: list[uuid.UUID] | None = Field(
+        default=None, max_length=50, description="null = everyone"
+    )
+
+
 class TaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
