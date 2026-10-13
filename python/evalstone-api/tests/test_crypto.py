@@ -29,3 +29,13 @@ def test_production_requires_a_provider_creds_key():
         provider_creds_key=Fernet.generate_key().decode(),
     )
     assert ok.provider_creds_key
+
+
+def test_production_refuses_a_malformed_provider_creds_key():
+    with pytest.raises(ValueError, match="not a valid Fernet key"):
+        Settings(
+            app_env="production",
+            docs_password="s3cret",
+            jwt_secret="a" * 40,
+            provider_creds_key="my-secret-string",
+        )

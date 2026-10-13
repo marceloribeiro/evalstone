@@ -1,6 +1,7 @@
 import getpass
 from functools import lru_cache
 
+from cryptography.fernet import Fernet
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
@@ -79,6 +80,13 @@ class Settings(BaseSettings):
             raise ValueError(f"JWT_SECRET must be at least {MIN_JWT_SECRET_BYTES} bytes (RFC 7518)")
         if not self.provider_creds_key:
             raise ValueError("PROVIDER_CREDS_KEY is empty; set a Fernet key and never change it")
+        try:
+            Fernet(self.provider_creds_key.encode())
+        except (ValueError, TypeError) as err:
+            raise ValueError(
+                "PROVIDER_CREDS_KEY is not a valid Fernet key (python -c "
+                "'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+            ) from err
         return self
 
 

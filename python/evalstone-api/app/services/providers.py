@@ -10,25 +10,47 @@ import ipaddress
 import re
 import socket
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlparse
 
-from evalstone.providers import ChatMessage, ProviderConfig, ProviderError, Providers
+from evalstone.providers import ChatMessage, ChatResponse, ProviderConfig, ProviderError, Providers
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.crypto import decrypt_secret, encrypt_secret
 from app.errors import Conflict, Invalid, NotFound
-from app.models import ADAPTERS, Organization, Provider
+from app.models import ADAPTERS, JudgeSettings, Organization, Project, Provider
 
 _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,49}$")
 _BLOCKED_HOSTS = {"localhost", "metadata.google.internal", "metadata", "instance-data"}
+KEY_REQUIRED_ADAPTERS = {"anthropic"}  # the SDK reads ANTHROPIC_API_KEY itself when given none
+MIN_KEY_LEN_FOR_LAST4 = 8  # shorter keys get no hint at all
+RESOLVE_TIMEOUT_S = 3.0
+_resolver = ThreadPoolExecutor(max_workers=4, thread_name_prefix="dns-guard")
+
+
+def _getaddrinfo(host: str) -> list[str]:
+    return sorted({info[4][0] for info in socket.getaddrinfo(host, None)})
 
 
 def _resolve(host: str) -> list[str]:
-    """Addresses a hostname resolves to (tests patch this; literal IPs skip DNS)."""
-    return sorted({info[4][0] for info in socket.getaddrinfo(host, None)})
+    """Addresses a hostname resolves to, bounded by RESOLVE_TIMEOUT_S (tests patch this).
+
+    Known limit: the HTTP client resolves again at call time, so a rebinding DNS name can
+    pass here and point elsewhere later; the guard stops accidents and casual probing,
+    not a hostile resolver. Pinning the resolved IP for the call is the stricter follow-up.
+    """
+    future = _resolver.submit(_getaddrinfo, host)
+    try:
+        return future.result(timeout=RESOLVE_TIMEOUT_S)
+    except FutureTimeout as err:
+        raise Invalid(
+            f"base_url host {host!r} did not resolve within {RESOLVE_TIMEOUT_S:g}s"
+        ) from err
 
 
 def validate_base_url(url: str | None) -> str | None:
@@ -36,19 +58,23 @@ def validate_base_url(url: str | None) -> str | None:
     if url is None or url.strip() == "":
         return None
     url = url.strip()
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname  # also raises on a malformed IPv6 literal
+    except ValueError as err:
+        raise Invalid("base_url is not a valid URL") from err
+    if parsed.scheme not in {"http", "https"} or not hostname:
         raise Invalid("base_url must be an http(s) URL with a host")
     if parsed.username or parsed.password:
         raise Invalid("base_url must not embed credentials")
-    host = parsed.hostname.lower()
+    host = hostname.lower()
     if get_settings().provider_allow_private_urls:
         return url.rstrip("/")
     if host in _BLOCKED_HOSTS or host.endswith(".localhost") or host.endswith(".internal"):
         raise Invalid(f"base_url host {host!r} is not allowed")
     try:
         addresses = [host] if _is_ip(host) else _resolve(host)
-    except OSError as err:
+    except (OSError, UnicodeError) as err:  # UnicodeError: an over-long label, not an OSError
         raise Invalid(f"base_url host {host!r} does not resolve") from err
     for addr in addresses:
         ip = ipaddress.ip_address(addr)
@@ -115,7 +141,13 @@ def _set_key(p: Provider, api_key: str | None) -> None:
     if api_key == "":
         p.encrypted_api_key, p.key_last4 = None, None  # explicit clear (keyless gateway)
     else:
-        p.encrypted_api_key, p.key_last4 = encrypt_secret(api_key), api_key[-4:]
+        p.encrypted_api_key = encrypt_secret(api_key)
+        # a hint only when it cannot be the whole secret
+        p.key_last4 = api_key[-4:] if len(api_key) >= MIN_KEY_LEN_FOR_LAST4 else None
+    _reset_verdict(p)
+
+
+def _reset_verdict(p: Provider) -> None:
     p.verified_ok, p.last_verified_at, p.last_error = None, None, None
 
 
@@ -155,26 +187,56 @@ def create(
     return p
 
 
+_CALL_AFFECTING = {"api_key", "base_url", "headers", "max_tokens_param", "timeout_s"}
+
+
 def update(db: Session, p: Provider, **fields) -> Provider:
+    """`fields` holds only what the caller sent; an explicit None clears a nullable field."""
+    touched = set(fields)
     if "api_key" in fields:
         _set_key(p, fields.pop("api_key"))
     if "base_url" in fields:
         p.base_url = validate_base_url(fields.pop("base_url"))
-        p.verified_ok, p.last_verified_at, p.last_error = None, None, None
     if "prices" in fields:
         p.prices = _validate_prices(fields.pop("prices") or {})
     if "headers" in fields:
         p.headers = dict(fields.pop("headers") or {})
-    for k, v in fields.items():
-        if v is not None:
-            setattr(p, k, v)
+    if "max_tokens_param" in fields:
+        p.max_tokens_param = fields.pop("max_tokens_param")  # None = back to host auto-detect
+    if "timeout_s" in fields and fields["timeout_s"] is not None:
+        p.timeout_s = fields.pop("timeout_s")
+    if touched & _CALL_AFFECTING:
+        _reset_verdict(p)  # the old verdict described a different endpoint/credentials
     db.commit()
     db.refresh(p)
     return p
 
 
+def judge_settings_referencing(db: Session, p: Provider) -> list[Project]:
+    """Projects whose judge settings route to `<p.name>/…`; deleting would strand them."""
+    prefix = f"{p.name}/"
+    rows = db.execute(
+        select(JudgeSettings, Project)
+        .join(Project, Project.id == JudgeSettings.project_id)
+        .where(Project.organization_id == p.organization_id, Project.deleted_at.is_(None))
+    ).all()
+    hit: list[Project] = []
+    for js, project in rows:
+        models = [js.default_model, *list((js.overrides or {}).values())]
+        if any(m and m.startswith(prefix) for m in models):
+            hit.append(project)
+    return hit
+
+
 def soft_delete(db: Session, p: Provider) -> None:
+    """Refuses while judge settings route to this name; purges the key from the row."""
+    stranded = judge_settings_referencing(db, p)
+    if stranded:
+        slugs = ", ".join(sorted(x.slug for x in stranded))
+        raise Conflict(f"provider '{p.name}' is used by judge settings of: {slugs}")
     p.deleted_at = datetime.now(UTC)
+    p.encrypted_api_key, p.key_last4 = None, None
+    _reset_verdict(p)
     db.commit()
 
 
@@ -183,6 +245,11 @@ def soft_delete(db: Session, p: Provider) -> None:
 
 def provider_config(p: Provider, *, timeout_s: float | None = None) -> ProviderConfig:
     """Library config for one entry; the decrypted key lives only in this object, in-process."""
+    if p.adapter in KEY_REQUIRED_ADAPTERS and not p.encrypted_api_key:
+        raise Invalid(
+            f"provider '{p.name}' ({p.adapter}) has no API key; the center never uses the "
+            "server's own credentials for a tenant"
+        )
     api_key = decrypt_secret(p.encrypted_api_key) if p.encrypted_api_key else None
     return ProviderConfig(
         adapter=p.adapter,
@@ -195,13 +262,39 @@ def provider_config(p: Provider, *, timeout_s: float | None = None) -> ProviderC
     )
 
 
-def build_registry(entries: list[Provider], *, timeout_s: float | None = None) -> Providers:
-    prices = {}
-    for p in entries:
-        prices.update({m: (r[0], r[1]) for m, r in (p.prices or {}).items()})
-    return Providers(
-        {p.name: provider_config(p, timeout_s=timeout_s) for p in entries}, prices=prices
-    )
+class CenterRegistry:
+    """`<name>/<model>` → that entry's own adapter and its own price table.
+
+    One library `Providers` per entry, so two providers pricing the same bare model id
+    (openai vs openrouter `gpt-x`) are each costed at their own rate.
+    """
+
+    def __init__(self, entries: list[Provider], *, timeout_s: float | None = None) -> None:
+        self._by_name: dict[str, Providers] = {}
+        for p in entries:
+            prices = {m: (r[0], r[1]) for m, r in (p.prices or {}).items()}
+            self._by_name[p.name] = Providers(
+                {p.name: provider_config(p, timeout_s=timeout_s)}, prices=prices
+            )
+
+    def get(self, name: str) -> Any:
+        if name not in self._by_name:
+            raise ProviderError(f"unknown provider {name!r}")
+        return self._by_name[name].get(name)
+
+    def complete(self, model: str, request: dict[str, Any]) -> ChatResponse:
+        name, _, _bare = model.partition("/")
+        if name not in self._by_name:
+            raise ProviderError(f"unknown provider {name!r}")
+        return self._by_name[name].complete(model, request)
+
+    def close(self) -> None:
+        for reg in self._by_name.values():
+            reg.close()
+
+
+def build_registry(entries: list[Provider], *, timeout_s: float | None = None) -> CenterRegistry:
+    return CenterRegistry(entries, timeout_s=timeout_s)
 
 
 def test_provider(db: Session, p: Provider, *, model: str) -> dict:

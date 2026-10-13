@@ -69,11 +69,11 @@ def test_write_needs_admin_members_read_masked(client, org, register):
         json={"email": "m@acme.example.com"},
         headers=org["headers"],
     )
-    body = {"name": "openai", "adapter": "openai", "api_key": "sk-abcd"}
+    body = {"name": "openai", "adapter": "openai", "api_key": "sk-live-abcd"}
     assert client.post(_url(org), json=body, headers=member_h).status_code == 403
     pid = client.post(_url(org), json=body, headers=org["headers"]).json()["id"]
     r = client.get(f"{_url(org)}/{pid}", headers=member_h)
-    assert r.status_code == 200 and r.json()["key_last4"] == "abcd" and "sk-abcd" not in r.text
+    assert r.status_code == 200 and r.json()["key_last4"] == "abcd" and "sk-live" not in r.text
     assert (
         client.patch(f"{_url(org)}/{pid}", json={"timeout_s": 5}, headers=member_h).status_code
         == 403
@@ -239,3 +239,118 @@ def test_registry_never_falls_back_to_server_env(db, org, monkeypatch):
         assert registry.get("openai").api_key is None  # the adapter did not read OPENAI_API_KEY
     finally:
         registry.close()
+
+
+# --- regressions from the #26 review ---------------------------------------------------------
+
+
+def test_keyless_anthropic_entry_never_uses_the_server_key(client, org, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "server-key-must-not-leak")
+    pid = client.post(
+        _url(org), json={"name": "anthropic", "adapter": "anthropic"}, headers=org["headers"]
+    ).json()["id"]
+    r = client.post(f"{_url(org)}/{pid}/test", json={"model": "claude-x"}, headers=org["headers"])
+    assert r.status_code == 422 and "no API key" in r.json()["detail"]
+    row = client.get(f"{_url(org)}/{pid}", headers=org["headers"]).json()
+    assert row["verified_ok"] is None  # nothing was called, nothing was recorded
+
+
+@pytest.mark.parametrize("url", ["http://[", "http://[::1", "http://" + "a" * 70 + ".example.com"])
+def test_malformed_base_url_is_422_not_500(client, org, url, monkeypatch):
+    monkeypatch.setattr(svc, "_resolve", svc._getaddrinfo)  # real resolver: over-long label
+    r = client.post(
+        _url(org), json={"name": "x", "adapter": "openai", "base_url": url}, headers=org["headers"]
+    )
+    assert r.status_code == 422, r.text
+
+
+def test_slow_dns_is_bounded(monkeypatch):
+    import importlib
+    import time
+
+    real_resolve = importlib.reload(svc)._resolve  # undo the autouse patch for this test
+    monkeypatch.setattr(svc, "_resolve", real_resolve)
+    monkeypatch.setattr(svc, "RESOLVE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(svc, "_getaddrinfo", lambda host: time.sleep(1) or ["93.184.216.34"])
+    with pytest.raises(Invalid, match="did not resolve within"):
+        svc.validate_base_url("https://slow.example.com/v1")
+
+
+def test_short_keys_get_no_last4_hint(client, org):
+    r = client.post(
+        _url(org),
+        json={"name": "proxy", "adapter": "openai", "api_key": "abcd"},
+        headers=org["headers"],
+    )
+    assert r.json()["has_api_key"] is True and r.json()["key_last4"] is None
+    assert "abcd" not in r.text
+
+
+def test_delete_purges_the_key_and_refuses_while_judge_settings_use_it(client, project, db):
+    import uuid
+
+    org, h = project["org"], project["headers"]
+    pid = client.post(
+        _url(org),
+        json={"name": "openai", "adapter": "openai", "api_key": "sk-live-1234"},
+        headers=h,
+    ).json()["id"]
+    assert (
+        client.put(
+            f"/projects/{project['id']}/judge-settings",
+            json={"default_model": "openai/x"},
+            headers=h,
+        ).status_code
+        == 200
+    )
+    blocked = client.delete(f"{_url(org)}/{pid}", headers=h)
+    assert blocked.status_code == 409 and "rag-bot" in blocked.json()["detail"]
+    client.put(f"/projects/{project['id']}/judge-settings", json={}, headers=h)
+    assert client.delete(f"{_url(org)}/{pid}", headers=h).status_code == 204
+    row = db.get(Provider, uuid.UUID(pid))
+    assert row.deleted_at is not None and row.encrypted_api_key is None and row.key_last4 is None
+
+
+def test_each_provider_is_costed_at_its_own_price_table(db, org):
+    from uuid import UUID
+
+    from app.services import organizations as org_svc
+
+    o = org_svc.get_organization(db, UUID(org["id"]))
+    a = svc.create(db, org=o, name="openai", adapter="openai", prices={"gpt-x": [2.5, 10.0]})
+    b = svc.create(db, org=o, name="openrouter", adapter="openai", prices={"gpt-x": [3.0, 12.0]})
+    registry = svc.build_registry([a, b])
+    try:
+        assert registry.get("openai").prices["gpt-x"] == (2.5, 10.0)
+        assert registry.get("openrouter").prices["gpt-x"] == (3.0, 12.0)
+    finally:
+        registry.close()
+
+
+def test_patch_clears_max_tokens_param_and_resets_the_verdict(client, org, db):
+    import uuid
+
+    pid = client.post(
+        _url(org),
+        json={"name": "openai", "adapter": "openai", "max_tokens_param": "max_tokens"},
+        headers=org["headers"],
+    ).json()["id"]
+    row = db.get(Provider, uuid.UUID(pid))
+
+    def mark_verified():
+        db.refresh(row)  # the API wrote through another session
+        row.verified_ok = True
+        db.commit()
+
+    mark_verified()
+    r = client.patch(f"{_url(org)}/{pid}", json={"max_tokens_param": None}, headers=org["headers"])
+    assert r.json()["max_tokens_param"] is None and r.json()["verified_ok"] is None
+    row.verified_ok = True
+    db.commit()
+    r = client.patch(
+        f"{_url(org)}/{pid}", json={"headers": {"X-Auth": "new"}}, headers=org["headers"]
+    )
+    assert r.json()["verified_ok"] is None  # new headers = different credentials
+    mark_verified()
+    r = client.patch(f"{_url(org)}/{pid}", json={"prices": {"m": [1, 1]}}, headers=org["headers"])
+    assert r.json()["verified_ok"] is True  # prices do not affect the call

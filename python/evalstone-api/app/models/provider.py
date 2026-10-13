@@ -46,6 +46,10 @@ class Provider(TimestampedModel):
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    @property
+    def has_api_key(self) -> bool:
+        return self.encrypted_api_key is not None
+
 
 class JudgeSettings(TimestampedModel):
     """Per project: the default judge model and per-check overrides, all `<provider>/<model>`."""

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field
 
 Adapter = Literal["openai", "anthropic", "gemini"]
 
@@ -40,16 +40,12 @@ class ProviderOut(BaseModel):
     prices: dict[str, list[float]]
     timeout_s: float
     max_tokens_param: str | None
-    key_last4: str | None
+    has_api_key: bool
+    key_last4: str | None  # None for short keys, where a hint would be the whole secret
     verified_ok: bool | None
     last_verified_at: datetime | None
     last_error: str | None
     created_at: datetime
-
-    @computed_field
-    @property
-    def has_api_key(self) -> bool:
-        return self.key_last4 is not None
 
 
 class ProviderTestIn(BaseModel):

@@ -60,6 +60,23 @@ def test_write_needs_admin(client, project, register):
     assert client.put(url, json={}, headers=member_h).status_code == 403
 
 
+def test_put_validates_with_one_provider_query(client, project, monkeypatch):
+    org, pid, h = project["org"], project["id"], project["headers"]
+    _prov(client, org, "openai")
+    calls: list[str] = []
+    real = svc._live_provider_names
+    monkeypatch.setattr(
+        svc, "_live_provider_names", lambda db, p: (calls.append("q"), real(db, p))[1]
+    )
+    overrides = {f"check{i}": "openai/m" for i in range(30)}
+    r = client.put(
+        f"/projects/{pid}/judge-settings",
+        json={"default_model": "openai/d", "overrides": overrides},
+        headers=h,
+    )
+    assert r.status_code == 200 and calls == ["q"]
+
+
 def test_model_for_prefers_override():
     from app.models import JudgeSettings
 
