@@ -10,7 +10,10 @@ export function baseOptions(): BaseLayoutProps {
     },
     links: [
       { text: 'Learn evals', url: '/docs/learn', active: 'nested-url' },
+      { text: 'How it works', url: '/docs/evalstone/how-it-works', active: 'url' },
       { text: 'Evalstone', url: '/docs/evalstone', active: 'nested-url' },
+      { text: 'Guides', url: '/docs/guides/quickstart', active: 'nested-url' },
+      { text: 'Reference', url: '/docs/reference/cli', active: 'nested-url' },
     ],
     githubUrl,
   };
