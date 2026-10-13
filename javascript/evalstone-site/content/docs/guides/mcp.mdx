@@ -29,7 +29,11 @@ Other clients: run `evalstone mcp` as a stdio server from the project directory.
 
 Errors come back as `{"error": …}` results the agent can read, never as protocol
 failures. The YAML is reloaded on every call, so editing a check or a dataset
-takes effect without restarting the server.
+takes effect without restarting the server; the provider clients and the judge
+cache live for the whole session. Report paths are relative to the directory
+holding `evalstone.yaml`, wherever the server was started from (`evalstone mcp
+--config path/to/evalstone.yaml` serves a project from elsewhere). Calls run one
+at a time, and anything a check prints goes to stderr, never onto the wire.
 
 ## A typical loop
 
