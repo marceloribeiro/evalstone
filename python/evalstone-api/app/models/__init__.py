@@ -5,6 +5,7 @@ from app.models.dataset import Dataset, DatasetVersion, DatasetVersionSample, Sa
 from app.models.organization import Organization, OrganizationInvitation, OrganizationMember, Role
 from app.models.project import IngestKey, Project
 from app.models.provider import ADAPTERS, JudgeSettings, Provider
+from app.models.run import Run, RunResult
 from app.models.user import User
 
 __all__ = [
@@ -21,6 +22,8 @@ __all__ = [
     "Project",
     "Provider",
     "Role",
+    "Run",
+    "RunResult",
     "Sample",
     "TimestampedModel",
     "User",
