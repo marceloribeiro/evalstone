@@ -19,7 +19,7 @@ from evalstone._json import canonical
 from evalstone.config import FACTORIES
 from evalstone.dataset import Sample
 from evalstone.output import Output
-from evalstone.score import Context
+from evalstone.score import Context, Score
 from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -28,7 +28,6 @@ from app.errors import Invalid, NotFound
 from app.models import Alert, CheckDefinition, Monitor, Project, Trace, TraceScore, User
 from app.services import judge_settings as judge_svc
 from app.services import providers as provider_svc
-from app.services.catalog import get_by_key
 from app.services.providers import validate_base_url
 from app.services.runs import output_hash_of
 
@@ -37,6 +36,13 @@ MAX_TRACE_BYTES = 64 * 1024
 MAX_TRACES_PER_SCORING = 200  # per monitor per tick; the rest waits for the next minute
 WEBHOOK_TIMEOUT_S = 5.0
 METRICS = ("pass_rate", "mean_score")
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    """A naive timestamp from a caller is UTC, never the database session's zone."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 def sample_bucket(project_id: uuid.UUID, client_id: str) -> float:
@@ -50,9 +56,7 @@ def sample_bucket(project_id: uuid.UUID, client_id: str) -> float:
 
 def ingest_traces(db: Session, project: Project, records: list[dict[str, Any]]) -> int:
     """Store traces, once per client id (a retried push is a no-op); returns how many were new."""
-    if len(records) > MAX_TRACES_PER_PUSH:
-        raise Invalid(f"at most {MAX_TRACES_PER_PUSH} traces per push")
-    values = []
+    values = []  # the schema caps the list at MAX_TRACES_PER_PUSH
     for i, t in enumerate(records):
         size = len(canonical(t).encode())
         if size > MAX_TRACE_BYTES:
@@ -72,7 +76,7 @@ def ingest_traces(db: Session, project: Project, records: list[dict[str, Any]]) 
                 "model": t.get("model"),
                 "latency_ms": t.get("latency_ms"),
                 "cost_usd": t.get("cost_usd"),
-                "occurred_at": t.get("occurred_at") or datetime.now(UTC),
+                "occurred_at": _aware(t.get("occurred_at")) or datetime.now(UTC),
                 "sample_bucket": sample_bucket(project.id, client_id),
             }
         )
@@ -101,7 +105,7 @@ def list_traces(
 ) -> tuple[list[Trace], int]:
     q = select(Trace).where(Trace.project_id == project.id, Trace.deleted_at.is_(None))
     if since is not None:
-        q = q.where(Trace.occurred_at >= since)
+        q = q.where(Trace.occurred_at >= _aware(since))
     if flagged is not None:
         q = q.where(Trace.flagged.is_(flagged))
     total = db.scalar(select(func.count()).select_from(q.subquery()))
@@ -130,34 +134,37 @@ def flag_trace(db: Session, trace: Trace, *, flagged: bool) -> Trace:
 # --- monitors ---------------------------------------------------------------------------------
 
 
-def _validate_policy(policy: dict[str, Any]) -> dict[str, Any]:
-    metric = policy.get("metric", "pass_rate")
-    if metric not in METRICS:
-        raise Invalid(f"alert_policy.metric must be one of {', '.join(METRICS)}")
-    threshold = policy.get("threshold")
-    if not isinstance(threshold, int | float) or not 0.0 <= float(threshold) <= 1.0:
-        raise Invalid("alert_policy.threshold must be a number in 0..1")
-    window = policy.get("window_minutes", 60)
-    if not isinstance(window, int) or isinstance(window, bool) or not 1 <= window <= 7 * 24 * 60:
-        raise Invalid("alert_policy.window_minutes must be an integer in 1..10080")
-    min_n = policy.get("min_n", 20)
-    if not isinstance(min_n, int) or isinstance(min_n, bool) or min_n < 1:
-        raise Invalid("alert_policy.min_n must be a positive integer")
+def _policy(policy: dict[str, Any]) -> dict[str, Any]:
+    """The router hands over `AlertPolicyIn.model_dump()` — pydantic owns the rules; this
+    only normalises the shape the scorer reads."""
     return {
-        "metric": metric,
-        "threshold": float(threshold),
-        "window_minutes": window,
-        "min_n": min_n,
+        "metric": policy.get("metric", "pass_rate"),
+        "threshold": float(policy["threshold"]),
+        "window_minutes": int(policy.get("window_minutes", 60)),
+        "min_n": int(policy.get("min_n", 20)),
     }
+
+
+def _catalog_rows(db: Session, project: Project, keys: list[str]) -> dict[str, CheckDefinition]:
+    rows = db.scalars(
+        select(CheckDefinition).where(
+            CheckDefinition.organization_id == project.organization_id,
+            CheckDefinition.key.in_(keys),
+            CheckDefinition.deleted_at.is_(None),
+        )
+    ).all()
+    return {r.key: r for r in rows}
 
 
 def _validate_checks(db: Session, project: Project, keys: list[str]) -> list[str]:
     if not keys:
         raise Invalid("a monitor needs at least one check")
-    missing = [k for k in keys if get_by_key(db, project.organization_id, k) is None]
+    keys = list(dict.fromkeys(keys))
+    found = _catalog_rows(db, project, keys)
+    missing = [k for k in keys if k not in found]
     if missing:
         raise Invalid(f"not in the organization's check catalog: {', '.join(missing)}")
-    return list(dict.fromkeys(keys))
+    return keys
 
 
 def create_monitor(
@@ -176,7 +183,7 @@ def create_monitor(
         name=name,
         check_keys=_validate_checks(db, project, check_keys),
         sample_rate=sample_rate,
-        alert_policy=_validate_policy(alert_policy),
+        alert_policy=_policy(alert_policy),
         webhook_url=validate_base_url(webhook_url) if webhook_url else None,
         created_by_user_id=created_by.id if created_by else None,
     )
@@ -190,12 +197,14 @@ def update_monitor(db: Session, project: Project, m: Monitor, **fields: Any) -> 
     if "check_keys" in fields and fields["check_keys"] is not None:
         m.check_keys = _validate_checks(db, project, fields["check_keys"])
     if "alert_policy" in fields and fields["alert_policy"] is not None:
-        m.alert_policy = _validate_policy(fields["alert_policy"])
+        m.alert_policy = _policy(fields["alert_policy"])
     if "webhook_url" in fields:
         m.webhook_url = validate_base_url(fields["webhook_url"]) if fields["webhook_url"] else None
     for k in ("name", "sample_rate", "status"):
         if fields.get(k) is not None:
             setattr(m, k, fields[k])
+    if m.status == "paused":
+        _resolve_open_alerts(db, m)  # a paused monitor leaves no open alert behind
     db.commit()
     db.refresh(m)
     return m
@@ -218,7 +227,15 @@ def get_monitor(db: Session, project: Project, monitor_id: uuid.UUID) -> Monitor
     return m
 
 
+def _resolve_open_alerts(db: Session, m: Monitor) -> None:
+    now = datetime.now(UTC)
+    for a in db.scalars(select(Alert).where(Alert.monitor_id == m.id, Alert.resolved_at.is_(None))):
+        a.resolved_at = now
+
+
 def soft_delete_monitor(db: Session, m: Monitor) -> None:
+    """A dead monitor leaves no open alert behind."""
+    _resolve_open_alerts(db, m)
     m.deleted_at = datetime.now(UTC)
     db.commit()
 
@@ -228,13 +245,11 @@ def soft_delete_monitor(db: Session, m: Monitor) -> None:
 
 def _build_checks(db: Session, project: Project, keys: list[str]) -> dict[str, Any]:
     """The org's catalog definitions → library checks (the same factories the CLI uses)."""
-    checks = {}
-    for key in keys:
-        d: CheckDefinition | None = get_by_key(db, project.organization_id, key)
-        if d is None:
-            raise Invalid(f"check {key!r} is no longer in the catalog")
-        checks[key] = FACTORIES[d.type](key=key, **d.params)
-    return checks
+    found = _catalog_rows(db, project, keys)
+    missing = [k for k in keys if k not in found]
+    if missing:
+        raise Invalid(f"no longer in the catalog: {', '.join(missing)}")
+    return {k: FACTORIES[found[k].type](key=k, **found[k].params) for k in keys}
 
 
 def _context(db: Session, project: Project) -> Context:
@@ -250,28 +265,107 @@ def _context(db: Session, project: Project) -> Context:
     return Context(providers=registry, extra={"judge_models": dict(settings.overrides or {})})
 
 
-def score_monitor(db: Session, monitor_id: uuid.UUID) -> dict[str, Any]:
-    """Score up to MAX_TRACES_PER_SCORING unscored sampled traces, then evaluate the policy."""
-    m = db.get(Monitor, monitor_id)
-    if m is None or m.deleted_at is not None or m.status != "active":
-        return {"scored": 0, "skipped": "inactive"}
-    project = db.get(Project, m.project_id)
-    scored_ids = select(TraceScore.trace_id).where(TraceScore.monitor_id == m.id)
+MAX_ATTEMPTS = 3  # an errored verdict is retried on later ticks, then left as an error
+
+
+def _pending(db: Session, m: Monitor) -> list[tuple[Trace, list[str]]]:
+    """Sampled traces inside the window (and not older than the monitor) with the check keys
+    that still lack a settled verdict: no row, or an errored row under MAX_ATTEMPTS."""
+    floor = max(
+        datetime.now(UTC) - timedelta(minutes=m.alert_policy["window_minutes"]), m.created_at
+    )
+    settled = (
+        select(TraceScore.trace_id, TraceScore.check_key)
+        .where(
+            TraceScore.monitor_id == m.id,
+            (TraceScore.error.is_(None)) | (TraceScore.attempts >= MAX_ATTEMPTS),
+        )
+        .subquery()
+    )
+    keys = list(m.check_keys)
+    done_count = (
+        select(settled.c.trace_id, func.count().label("n"))
+        .where(settled.c.check_key.in_(keys))
+        .group_by(settled.c.trace_id)
+        .subquery()
+    )
     traces = list(
         db.scalars(
             select(Trace)
+            .outerjoin(done_count, done_count.c.trace_id == Trace.id)
             .where(
                 Trace.project_id == m.project_id,
                 Trace.deleted_at.is_(None),
                 Trace.sample_bucket < m.sample_rate,
-                Trace.id.not_in(scored_ids),
+                Trace.occurred_at >= floor,
+                func.coalesce(done_count.c.n, 0) < len(keys),
             )
-            .order_by(Trace.occurred_at)
+            .order_by(Trace.occurred_at.desc())  # live traffic first
             .limit(MAX_TRACES_PER_SCORING)
         ).all()
     )
-    result = {"scored": 0, "errors": 0, "cost_usd": 0.0, "alert": None}
-    if traces:
+    if not traces:
+        return []
+    have = {
+        (tid, key)
+        for tid, key in db.execute(
+            select(settled.c.trace_id, settled.c.check_key).where(
+                settled.c.trace_id.in_([t.id for t in traces])
+            )
+        )
+    }
+    return [(t, [k for k in keys if (t.id, k) not in have]) for t in traces]
+
+
+def _record(db: Session, m: Monitor, trace: Trace, key: str, s: Any, now: datetime) -> None:
+    """Upsert the verdict; an errored row counts an attempt, a clean one settles it."""
+    stmt = insert(TraceScore).values(
+        id=uuid.uuid4(),
+        monitor_id=m.id,
+        trace_id=trace.id,
+        check_key=key,
+        score=s.value,
+        passed=s.passed,
+        reason=s.reason,
+        error=s.error,
+        cost_usd=s.cost_usd or 0.0,
+        latency_ms=s.latency_ms or 0.0,
+        attempts=1,
+        scored_at=now,
+    )
+    db.execute(
+        stmt.on_conflict_do_update(
+            index_elements=["monitor_id", "trace_id", "check_key"],
+            set_={
+                "score": stmt.excluded.score,
+                "passed": stmt.excluded.passed,
+                "reason": stmt.excluded.reason,
+                "error": stmt.excluded.error,
+                "cost_usd": TraceScore.cost_usd + stmt.excluded.cost_usd,
+                "latency_ms": stmt.excluded.latency_ms,
+                "attempts": TraceScore.attempts + 1,
+                "scored_at": stmt.excluded.scored_at,
+                "updated_at": func.now(),
+            },
+        )
+    )
+
+
+def score_monitor(db: Session, monitor_id: uuid.UUID) -> dict[str, Any]:
+    """One pass: lock the monitor (a pass still running → skip this tick), score the pending
+    (trace, check) pairs — a crash on one trace is an errored verdict, never a lost batch —
+    then evaluate the policy."""
+    m = db.scalar(select(Monitor).where(Monitor.id == monitor_id).with_for_update(skip_locked=True))
+    if m is None:
+        db.rollback()
+        return {"scored": 0, "skipped": "busy or missing"}
+    if m.deleted_at is not None or m.status != "active":
+        db.rollback()
+        return {"scored": 0, "skipped": "inactive"}
+    project = db.get(Project, m.project_id)
+    pending = _pending(db, m)
+    result: dict[str, Any] = {"scored": 0, "errors": 0, "cost_usd": 0.0, "alert": None}
+    if pending:
         try:
             checks = _build_checks(db, project, list(m.check_keys))
             ctx = _context(db, project)
@@ -280,26 +374,18 @@ def score_monitor(db: Session, monitor_id: uuid.UUID) -> dict[str, Any]:
             db.commit()
             return {**result, "skipped": m.last_error}
         now = datetime.now(UTC)
+        last_error = None
         try:
-            for t in traces:
+            for t, keys in pending:
                 sample = Sample(id=t.client_id, input=t.input, metadata=dict(t.metadata_ or {}))
                 output = Output(value=t.output, model=t.model)
-                for key, check in checks.items():
-                    s = check.evaluate(sample, output, ctx)
-                    db.add(
-                        TraceScore(
-                            monitor_id=m.id,
-                            trace_id=t.id,
-                            check_key=key,
-                            score=s.value,
-                            passed=s.passed,
-                            reason=s.reason,
-                            error=s.error,
-                            cost_usd=s.cost_usd,
-                            latency_ms=s.latency_ms,
-                            scored_at=now,
-                        )
-                    )
+                for key in keys:
+                    try:
+                        s = checks[key].evaluate(sample, output, ctx)
+                    except Exception as exc:
+                        s = Score.errored(f"{type(exc).__name__}: {str(exc)[:300]}")
+                        last_error = f"{t.client_id}/{key}: {s.error}"
+                    _record(db, m, t, key, s, now)
                     result["cost_usd"] += s.cost_usd or 0.0
                     result["errors"] += 1 if s.error else 0
                 result["scored"] += 1
@@ -307,24 +393,38 @@ def score_monitor(db: Session, monitor_id: uuid.UUID) -> dict[str, Any]:
             close = getattr(ctx.providers, "close", None)
             if callable(close):
                 close()
-        m.last_scored_at, m.last_error = now, None
+        m.last_scored_at, m.last_error = now, last_error
         db.commit()
     result["alert"] = evaluate_policy(db, m)
+    db.commit()  # releases the monitor lock
     return result
 
 
 def window_metrics(db: Session, m: Monitor) -> dict[str, Any]:
+    """Per TRACE over the policy's window (by when the trace happened): a trace passes when
+    every one of its settled checks passes; `mean_score` is the mean of per-trace means."""
     policy = m.alert_policy
     since = datetime.now(UTC) - timedelta(minutes=policy["window_minutes"])
+    per_trace = (
+        select(
+            TraceScore.trace_id,
+            func.bool_and(TraceScore.passed).label("all_pass"),
+            func.avg(TraceScore.score).label("mean"),
+        )
+        .join(Trace, Trace.id == TraceScore.trace_id)
+        .where(
+            TraceScore.monitor_id == m.id,
+            TraceScore.error.is_(None),
+            Trace.occurred_at >= since,
+        )
+        .group_by(TraceScore.trace_id)
+        .subquery()
+    )
     row = db.execute(
         select(
-            func.count(func.distinct(TraceScore.trace_id)),
-            func.avg(case((TraceScore.passed, 1.0), else_=0.0)),
-            func.avg(TraceScore.score),
-        ).where(
-            TraceScore.monitor_id == m.id,
-            TraceScore.scored_at >= since,
-            TraceScore.error.is_(None),
+            func.count(),
+            func.avg(case((per_trace.c.all_pass, 1.0), else_=0.0)),
+            func.avg(per_trace.c.mean),
         )
     ).one()
     n = int(row[0] or 0)
@@ -343,16 +443,20 @@ def open_alert(db: Session, m: Monitor) -> Alert | None:
 
 
 def evaluate_policy(db: Session, m: Monitor) -> dict[str, Any] | None:
-    """Below the threshold with enough samples → open + notify one alert; recovered → resolve."""
+    """Open (and notify) one alert when the metric is below the threshold with ≥ min_n
+    traces; keep it open while it stays below; resolve as soon as the window is back at or
+    above the threshold (any n) — a lull never freezes an alert open."""
     policy = m.alert_policy
     metrics = window_metrics(db, m)
     value = metrics[policy["metric"]]
     current = open_alert(db, m)
-    if metrics["n"] < policy["min_n"] or value is None:
-        return None
+    if value is None:
+        return None if current is None else {"alert_id": str(current.id), "state": "open"}
     if value < policy["threshold"]:
         if current is not None:
             return {"alert_id": str(current.id), "state": "open", "value": value}
+        if metrics["n"] < policy["min_n"]:
+            return None
         alert = Alert(
             monitor_id=m.id,
             project_id=m.project_id,
@@ -402,7 +506,8 @@ def notify(db: Session, m: Monitor, alert: Alert) -> None:
 
 
 def list_alerts(db: Session, project: Project, *, open_only: bool = False) -> list[Alert]:
-    q = select(Alert).where(Alert.project_id == project.id)
+    live = select(Monitor.id).where(Monitor.project_id == project.id, Monitor.deleted_at.is_(None))
+    q = select(Alert).where(Alert.project_id == project.id, Alert.monitor_id.in_(live))
     if open_only:
         q = q.where(Alert.resolved_at.is_(None))
     return list(db.scalars(q.order_by(Alert.opened_at.desc(), Alert.id.desc()).limit(500)).all())
