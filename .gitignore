@@ -39,3 +39,6 @@ next-env.d.ts
 **/playwright/.cache/
 **/logs/
 npm-debug.log*
+
+# ── Evalstone run reports (written by `evalstone run`) ──────────────────
+**/evalstone-report.json

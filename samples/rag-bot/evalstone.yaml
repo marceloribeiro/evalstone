@@ -1,0 +1,13 @@
+project: rag-bot
+imports: [evals.checks]
+datasets:
+  golden: evals/golden.jsonl
+checks:
+  must_include: { type: contains }
+  short: { type: length, max_words: 40 }
+suites:
+  nightly:
+    dataset: golden
+    target: { kind: callable, fn: "bot:answer" }
+    checks: [must_include, short, no_apology, one_sentence]
+    gate: { min_pass_rate: 0.9 }

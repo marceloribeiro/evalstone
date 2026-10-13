@@ -129,3 +129,22 @@ def test_output_text_handles_models_and_dataclasses():
     assert Output(value=Resp(answer="hi")).text == '{"answer": "hi"}'
     assert Output(value=Row(n=1)).text == '{"n": 1}'
     assert Output(value={"s": {2, 1}}).text == '{"s": [1, 2]}'
+
+
+def test_registry_replaces_only_a_reimported_function_not_a_closure_twin():
+    def make(v):
+        @check("dyn")
+        def inner(sample, output):
+            return v
+
+        return inner
+
+    make(True)
+    with pytest.raises(ValueError, match="already registered"):
+        make(False)
+    # a re-import executes the same source in a fresh module: new globals, same qualname
+    ns1, ns2 = {"check": check}, {"check": check}
+    src = "@check('reimp')\ndef f(sample, output):\n    return True\n"
+    exec(compile(src, "<mod>", "exec"), ns1)
+    exec(compile(src, "<mod>", "exec"), ns2)
+    assert registry.get("reimp") is ns2["f"]
