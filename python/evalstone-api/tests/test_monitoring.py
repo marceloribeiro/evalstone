@@ -295,3 +295,240 @@ def test_webhook_failure_is_recorded_on_the_alert(client, project, db):
         svc.score_monitor(db, uuid.UUID(m["id"]))
     alert = client.get(_p(project, "/alerts"), headers=h).json()[0]
     assert alert["notified_at"] is None and "503" in alert["notify_error"]
+
+
+# --- regressions from the #37 review ---------------------------------------------------------
+
+
+def _monitor(client, project, **extra):
+    _catalog(client, project, "has-paris", "contains", {"needles": ["Paris"]})
+    body = {
+        "name": "m",
+        "check_keys": ["has-paris"],
+        "sample_rate": 1.0,
+        "alert_policy": {"threshold": 0.9, "min_n": 5},
+        **extra,
+    }
+    r = client.post(_p(project, "/monitors"), json=body, headers=project["headers"])
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+def test_concurrent_passes_do_not_overlap(client, project, db):
+    import uuid
+
+    from app.db import SessionLocal
+
+    m = _monitor(client, project)
+    kh = {"Authorization": f"Bearer {_key(client, project)}"}
+    client.post(_p(project, "/traces"), json={"traces": _traces(5)}, headers=kh)
+    other = SessionLocal()
+    try:
+        other.execute(__import__("sqlalchemy").text("SELECT 1"))
+        held = other.scalar(
+            __import__("sqlalchemy")
+            .select(__import__("app.models", fromlist=["Monitor"]).Monitor)
+            .where(__import__("app.models", fromlist=["Monitor"]).Monitor.id == uuid.UUID(m["id"]))
+            .with_for_update()
+        )
+        assert held is not None  # a pass is "running" in another session
+        result = svc.score_monitor(db, uuid.UUID(m["id"]))
+        assert result["scored"] == 0 and result["skipped"] == "busy or missing"
+    finally:
+        other.rollback()
+        other.close()
+    assert svc.score_monitor(db, uuid.UUID(m["id"]))["scored"] == 5  # once released
+
+
+def test_history_before_the_monitor_or_outside_the_window_is_not_scored(client, project, db):
+    import uuid
+    from datetime import UTC, datetime, timedelta
+
+    kh = {"Authorization": f"Bearer {_key(client, project)}"}
+    old = [
+        {
+            "id": f"old{i}",
+            "input": "q",
+            "output": "no idea",
+            "occurred_at": (datetime.now(UTC) - timedelta(days=30)).isoformat(),
+        }
+        for i in range(10)
+    ]
+    client.post(
+        _p(project, "/traces"), json={"traces": old}, headers=kh
+    )  # before the monitor existed
+    m = _monitor(client, project, alert_policy={"threshold": 0.9, "min_n": 5, "window_minutes": 60})
+    client.post(_p(project, "/traces"), json={"traces": _traces(3)}, headers=kh)  # live
+    result = svc.score_monitor(db, uuid.UUID(m["id"]))
+    assert (
+        result["scored"] == 3 and result["alert"] is None
+    )  # the 30-day-old failures never counted
+    assert (
+        client.get(_p(project, f"/monitors/{m['id']}/window"), headers=project["headers"]).json()[
+            "n"
+        ]
+        == 3
+    )
+
+
+def test_one_crashing_trace_is_an_errored_verdict_not_a_lost_batch(
+    client, project, db, monkeypatch
+):
+    import uuid
+
+    from evalstone.config import FACTORIES
+
+    m = _monitor(client, project)
+    kh = {"Authorization": f"Bearer {_key(client, project)}"}
+    client.post(_p(project, "/traces"), json={"traces": _traces(4)}, headers=kh)
+    real = FACTORIES["contains"]
+
+    def exploding(**kw):
+        check = real(**kw)
+        inner = check.evaluate
+
+        def evaluate(sample, output, ctx):
+            if sample.id == "t2":
+                raise RuntimeError("boom on t2")
+            return inner(sample, output, ctx)
+
+        check.evaluate = evaluate
+        return check
+
+    monkeypatch.setitem(FACTORIES, "contains", exploding)
+    result = svc.score_monitor(db, uuid.UUID(m["id"]))
+    assert result["scored"] == 4 and result["errors"] == 1
+    row = client.get(_p(project, f"/monitors/{m['id']}"), headers=project["headers"]).json()
+    assert "t2/has-paris: RuntimeError: boom on t2" in row["last_error"]
+    scores = client.get(
+        _p(project, f"/monitors/{m['id']}/window"), headers=project["headers"]
+    ).json()
+    assert scores["n"] == 3  # the three clean verdicts were kept
+
+
+def test_errored_verdicts_are_retried_then_settled(client, project, db, monkeypatch):
+    import uuid
+
+    from app.models import TraceScore
+
+    m = _monitor(client, project)
+    kh = {"Authorization": f"Bearer {_key(client, project)}"}
+    client.post(_p(project, "/traces"), json={"traces": _traces(1)}, headers=kh)
+    calls = []
+    real_build = svc._build_checks
+
+    def broken(db_, project_, keys):
+        checks = real_build(db_, project_, keys)
+        for c in checks.values():
+
+            def evaluate(sample, output, ctx, _c=c):
+                calls.append(1)
+                raise RuntimeError("judge down")
+
+            c.evaluate = evaluate
+        return checks
+
+    monkeypatch.setattr(svc, "_build_checks", broken)
+    for _ in range(svc.MAX_ATTEMPTS + 2):
+        svc.score_monitor(db, uuid.UUID(m["id"]))
+    row = db.query(TraceScore).one()
+    assert row.attempts == svc.MAX_ATTEMPTS and len(calls) == svc.MAX_ATTEMPTS  # then left alone
+    monkeypatch.setattr(svc, "_build_checks", real_build)
+    assert svc.score_monitor(db, uuid.UUID(m["id"]))["scored"] == 0  # settled as an error
+
+
+def test_alert_resolves_on_recovery_even_below_min_n(client, project, db):
+    import uuid
+
+    m = _monitor(client, project, alert_policy={"threshold": 0.9, "min_n": 5})
+    kh = {"Authorization": f"Bearer {_key(client, project)}"}
+    client.post(_p(project, "/traces"), json={"traces": _traces(6, bad={0, 1, 2})}, headers=kh)
+    assert svc.score_monitor(db, uuid.UUID(m["id"]))["alert"]["state"] == "opened"
+    # the window now only holds the 6 (3 bad): still open; make the window tiny → recovery with n < min_n
+
+    client.patch(
+        _p(project, f"/monitors/{m['id']}"),
+        json={"alert_policy": {"threshold": 0.9, "min_n": 5, "window_minutes": 1}},
+        headers=project["headers"],
+    )
+    db.expire_all()
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Trace
+
+    for t in db.query(Trace).all():
+        if t.client_id in {"t0", "t1", "t2"}:
+            t.occurred_at = datetime.now(UTC) - timedelta(minutes=5)  # the failures age out
+    db.commit()
+    assert svc.score_monitor(db, uuid.UUID(m["id"]))["alert"]["state"] == "resolved"
+
+
+def test_per_trace_pass_semantics_and_added_checks_backfill(client, project, db):
+    import uuid
+
+    h = project["headers"]
+    _catalog(client, project, "has-paris", "contains", {"needles": ["Paris"]})
+    _catalog(client, project, "short", "length", {"max_words": 100})
+    m = client.post(
+        _p(project, "/monitors"),
+        json={
+            "name": "m",
+            "check_keys": ["has-paris"],
+            "sample_rate": 1.0,
+            "alert_policy": {"threshold": 0.9, "min_n": 5},
+        },
+        headers=h,
+    ).json()
+    kh = {"Authorization": f"Bearer {_key(client, project)}"}
+    client.post(_p(project, "/traces"), json={"traces": _traces(10, bad={1, 2})}, headers=kh)
+    assert svc.score_monitor(db, uuid.UUID(m["id"]))["scored"] == 10
+    client.patch(
+        _p(project, f"/monitors/{m['id']}"), json={"check_keys": ["has-paris", "short"]}, headers=h
+    )
+    r = svc.score_monitor(db, uuid.UUID(m["id"]))
+    assert r["scored"] == 10  # the new check is backfilled on already-scored traces
+    window = client.get(_p(project, f"/monitors/{m['id']}/window"), headers=h).json()
+    assert window["n"] == 10 and window["pass_rate"] == pytest.approx(
+        0.8
+    )  # per trace: 2 of 10 fail a check
+
+
+def test_delete_and_pause_resolve_open_alerts(client, project, db):
+    import uuid
+
+    h = project["headers"]
+    m = _monitor(client, project)
+    kh = {"Authorization": f"Bearer {_key(client, project)}"}
+    client.post(_p(project, "/traces"), json={"traces": _traces(6, bad={0, 1, 2})}, headers=kh)
+    svc.score_monitor(db, uuid.UUID(m["id"]))
+    assert len(client.get(_p(project, "/alerts"), params={"open": True}, headers=h).json()) == 1
+    client.patch(_p(project, f"/monitors/{m['id']}"), json={"status": "paused"}, headers=h)
+    assert client.get(_p(project, "/alerts"), params={"open": True}, headers=h).json() == []
+    client.patch(_p(project, f"/monitors/{m['id']}"), json={"status": "active"}, headers=h)
+    svc.score_monitor(db, uuid.UUID(m["id"]))  # reopens (still below threshold)
+    assert len(client.get(_p(project, "/alerts"), params={"open": True}, headers=h).json()) == 1
+    client.delete(_p(project, f"/monitors/{m['id']}"), headers=h)
+    assert (
+        client.get(_p(project, "/alerts"), headers=h).json() == []
+    )  # a dead monitor lists nothing
+
+
+def test_naive_timestamps_are_utc_and_deleted_traces_free_their_id(client, project, db):
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import Trace
+
+    kh = {"Authorization": f"Bearer {_key(client, project)}"}
+    client.post(
+        _p(project, "/traces"),
+        json={"traces": [{"id": "n1", "input": "q", "occurred_at": "2026-10-13T14:00:00"}]},
+        headers=kh,
+    )
+    row = db.query(Trace).one()
+    assert row.occurred_at == datetime(2026, 10, 13, 14, 0, tzinfo=UTC)
+    row.deleted_at = datetime.now(UTC) - timedelta(seconds=1)
+    db.commit()
+    again = client.post(
+        _p(project, "/traces"), json={"traces": [{"id": "n1", "input": "q2"}]}, headers=kh
+    )
+    assert again.json() == {"stored": 1}  # the soft-deleted trace no longer blocks its id

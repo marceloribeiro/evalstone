@@ -15,7 +15,13 @@ class Trace(TimestampedModel):
 
     __tablename__ = "traces"
     __table_args__ = (
-        Index("uq_trace_project_client_id_live", "project_id", "client_id", unique=True),
+        Index(
+            "uq_trace_project_client_id_live",
+            "project_id",
+            "client_id",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
+        ),
         Index("ix_traces_project_occurred", "project_id", "occurred_at"),
     )
 
@@ -81,6 +87,7 @@ class TraceScore(TimestampedModel):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # errors retry
     scored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
