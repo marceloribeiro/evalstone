@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import ProjectActor, ProjectContext, get_project_actor, require_project
 from app.models import Role
-from app.schemas.runs import BaselineIn, ResultOut, ResultPage, RunOut, RunPage
+from app.schemas.runs import BaselineIn, ResultOut, ResultPage, RunOut, RunPage, SuiteOut
 from app.services import runs as svc
 
 router = APIRouter(tags=["runs"])
@@ -43,6 +43,15 @@ def list_runs(
     return RunPage(
         items=[RunOut.model_validate(r) for r in rows], total=total, offset=offset, limit=limit
     )
+
+
+@router.get(_p + "/suites", response_model=list[SuiteOut])
+def list_suites(
+    actor: ProjectActor = Depends(get_project_actor),
+    db: Session = Depends(get_db),
+):
+    """The project's suites (distinct, with counts and baselines) — the filter the web offers."""
+    return svc.list_suites(db, actor.project)
 
 
 @router.get(_p + "/{run_id}", response_model=RunOut)
