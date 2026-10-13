@@ -1,0 +1,1347 @@
+{
+  "id": "ba328f946cca",
+  "suite": "ci",
+  "dataset": "golden",
+  "dataset_hash": "4f9ead6fe54b0001a3f6b3eee02ba18bc64649f05d5d66e1288fcf35771fd931",
+  "target": {
+    "kind": "callable",
+    "name": "answer"
+  },
+  "check_keys": [
+    "must_include",
+    "short",
+    "no_apology",
+    "one_sentence"
+  ],
+  "git_sha": "244cea91acde8f32026cbeba61edd89e95e4129b",
+  "trigger": "cli",
+  "baseline_run_id": null,
+  "started_at": "2026-10-13T18:42:27.433470Z",
+  "finished_at": "2026-10-13T18:42:27.452313Z",
+  "results": [
+    {
+      "sample_id": "return-window",
+      "check_key": "must_include",
+      "tags": [
+        "returns"
+      ],
+      "input": "How many days do I have to return something?",
+      "expected": {
+        "must_include": [
+          "30 days"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.3420830034883693,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.01012500433716923,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "return-window",
+      "check_key": "short",
+      "tags": [
+        "returns"
+      ],
+      "input": "How many days do I have to return something?",
+      "expected": {
+        "must_include": [
+          "30 days"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.3420830034883693,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.005750000127591193,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "return-window",
+      "check_key": "no_apology",
+      "tags": [
+        "returns"
+      ],
+      "input": "How many days do I have to return something?",
+      "expected": {
+        "must_include": [
+          "30 days"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.3420830034883693,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0036249984987080097,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "return-window",
+      "check_key": "one_sentence",
+      "tags": [
+        "returns"
+      ],
+      "input": "How many days do I have to return something?",
+      "expected": {
+        "must_include": [
+          "30 days"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.3420830034883693,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.003207998815923929,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "sale-return",
+      "check_key": "must_include",
+      "tags": [
+        "returns",
+        "edge"
+      ],
+      "input": "Can I return a sale item?",
+      "expected": {
+        "must_include": [
+          "30 days",
+          "store credit"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.06412499351426959,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 0.5,
+        "passed": false,
+        "reason": "missing ['store credit']",
+        "cost_usd": 0.0,
+        "latency_ms": 0.006750007742084563,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "sale-return",
+      "check_key": "short",
+      "tags": [
+        "returns",
+        "edge"
+      ],
+      "input": "Can I return a sale item?",
+      "expected": {
+        "must_include": [
+          "30 days",
+          "store credit"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.06412499351426959,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0029999937396496534,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "sale-return",
+      "check_key": "no_apology",
+      "tags": [
+        "returns",
+        "edge"
+      ],
+      "input": "Can I return a sale item?",
+      "expected": {
+        "must_include": [
+          "30 days",
+          "store credit"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.06412499351426959,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0020419975044205785,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "sale-return",
+      "check_key": "one_sentence",
+      "tags": [
+        "returns",
+        "edge"
+      ],
+      "input": "Can I return a sale item?",
+      "expected": {
+        "must_include": [
+          "30 days",
+          "store credit"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.06412499351426959,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001958003849722445,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "refund-time",
+      "check_key": "must_include",
+      "tags": [
+        "returns"
+      ],
+      "input": "When will my refund arrive?",
+      "expected": {
+        "must_include": [
+          "5 business days"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.053292009397409856,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 0.0,
+        "passed": false,
+        "reason": "missing ['5 business days']",
+        "cost_usd": 0.0,
+        "latency_ms": 0.004124987754039466,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "refund-time",
+      "check_key": "short",
+      "tags": [
+        "returns"
+      ],
+      "input": "When will my refund arrive?",
+      "expected": {
+        "must_include": [
+          "5 business days"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.053292009397409856,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0022500025806948543,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "refund-time",
+      "check_key": "no_apology",
+      "tags": [
+        "returns"
+      ],
+      "input": "When will my refund arrive?",
+      "expected": {
+        "must_include": [
+          "5 business days"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.053292009397409856,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0017920101527124643,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "refund-time",
+      "check_key": "one_sentence",
+      "tags": [
+        "returns"
+      ],
+      "input": "When will my refund arrive?",
+      "expected": {
+        "must_include": [
+          "5 business days"
+        ]
+      },
+      "output": {
+        "value": "Items can be returned within 30 days of delivery with the original receipt.",
+        "latency_ms": 0.053292009397409856,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001791995600797236,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "shipping-time",
+      "check_key": "must_include",
+      "tags": [
+        "shipping"
+      ],
+      "input": "How long does standard shipping take?",
+      "expected": {
+        "must_include": [
+          "3-5"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.050874994485639036,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0029999937396496534,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "shipping-time",
+      "check_key": "short",
+      "tags": [
+        "shipping"
+      ],
+      "input": "How long does standard shipping take?",
+      "expected": {
+        "must_include": [
+          "3-5"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.050874994485639036,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0020830048015341163,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "shipping-time",
+      "check_key": "no_apology",
+      "tags": [
+        "shipping"
+      ],
+      "input": "How long does standard shipping take?",
+      "expected": {
+        "must_include": [
+          "3-5"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.050874994485639036,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0017080019460991025,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "shipping-time",
+      "check_key": "one_sentence",
+      "tags": [
+        "shipping"
+      ],
+      "input": "How long does standard shipping take?",
+      "expected": {
+        "must_include": [
+          "3-5"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.050874994485639036,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001667009200900793,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "free-shipping",
+      "check_key": "must_include",
+      "tags": [
+        "shipping"
+      ],
+      "input": "Is shipping free?",
+      "expected": {
+        "must_include": [
+          "$50"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.047416993766091764,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0028340000426396728,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "free-shipping",
+      "check_key": "short",
+      "tags": [
+        "shipping"
+      ],
+      "input": "Is shipping free?",
+      "expected": {
+        "must_include": [
+          "$50"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.047416993766091764,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0019170111045241356,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "free-shipping",
+      "check_key": "no_apology",
+      "tags": [
+        "shipping"
+      ],
+      "input": "Is shipping free?",
+      "expected": {
+        "must_include": [
+          "$50"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.047416993766091764,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0016250123735517263,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "free-shipping",
+      "check_key": "one_sentence",
+      "tags": [
+        "shipping"
+      ],
+      "input": "Is shipping free?",
+      "expected": {
+        "must_include": [
+          "$50"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.047416993766091764,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.003958004526793957,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "express",
+      "check_key": "must_include",
+      "tags": [
+        "shipping"
+      ],
+      "input": "How much is express shipping?",
+      "expected": {
+        "must_include": [
+          "$15"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.048542002332396805,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 0.0,
+        "passed": false,
+        "reason": "missing ['$15']",
+        "cost_usd": 0.0,
+        "latency_ms": 0.003125009243376553,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "express",
+      "check_key": "short",
+      "tags": [
+        "shipping"
+      ],
+      "input": "How much is express shipping?",
+      "expected": {
+        "must_include": [
+          "$15"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.048542002332396805,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001791995600797236,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "express",
+      "check_key": "no_apology",
+      "tags": [
+        "shipping"
+      ],
+      "input": "How much is express shipping?",
+      "expected": {
+        "must_include": [
+          "$15"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.048542002332396805,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0015830009942874312,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "express",
+      "check_key": "one_sentence",
+      "tags": [
+        "shipping"
+      ],
+      "input": "How much is express shipping?",
+      "expected": {
+        "must_include": [
+          "$15"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.048542002332396805,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001500011421740055,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "ship-to-uk",
+      "check_key": "must_include",
+      "tags": [
+        "shipping",
+        "edge"
+      ],
+      "input": "Do you ship to the UK?",
+      "expected": {
+        "must_include": [
+          "United States and Canada"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.04529200668912381,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 0.0,
+        "passed": false,
+        "reason": "missing ['United States and Canada']",
+        "cost_usd": 0.0,
+        "latency_ms": 0.003082997864112258,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "ship-to-uk",
+      "check_key": "short",
+      "tags": [
+        "shipping",
+        "edge"
+      ],
+      "input": "Do you ship to the UK?",
+      "expected": {
+        "must_include": [
+          "United States and Canada"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.04529200668912381,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0017909915186464787,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "ship-to-uk",
+      "check_key": "no_apology",
+      "tags": [
+        "shipping",
+        "edge"
+      ],
+      "input": "Do you ship to the UK?",
+      "expected": {
+        "must_include": [
+          "United States and Canada"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.04529200668912381,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0015830009942874312,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "ship-to-uk",
+      "check_key": "one_sentence",
+      "tags": [
+        "shipping",
+        "edge"
+      ],
+      "input": "Do you ship to the UK?",
+      "expected": {
+        "must_include": [
+          "United States and Canada"
+        ]
+      },
+      "output": {
+        "value": "Standard shipping takes 3-5 business days and is free on orders over $50.",
+        "latency_ms": 0.04529200668912381,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001624997821636498,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "warranty",
+      "check_key": "must_include",
+      "tags": [
+        "warranty"
+      ],
+      "input": "How long is the warranty on electronics?",
+      "expected": {
+        "must_include": [
+          "12-month"
+        ]
+      },
+      "output": {
+        "value": "Electronics carry a 12-month manufacturer warranty.",
+        "latency_ms": 0.045249995309859514,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0024999899324029684,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "warranty",
+      "check_key": "short",
+      "tags": [
+        "warranty"
+      ],
+      "input": "How long is the warranty on electronics?",
+      "expected": {
+        "must_include": [
+          "12-month"
+        ]
+      },
+      "output": {
+        "value": "Electronics carry a 12-month manufacturer warranty.",
+        "latency_ms": 0.045249995309859514,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0018329883459955454,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "warranty",
+      "check_key": "no_apology",
+      "tags": [
+        "warranty"
+      ],
+      "input": "How long is the warranty on electronics?",
+      "expected": {
+        "must_include": [
+          "12-month"
+        ]
+      },
+      "output": {
+        "value": "Electronics carry a 12-month manufacturer warranty.",
+        "latency_ms": 0.045249995309859514,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0017080019460991025,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "warranty",
+      "check_key": "one_sentence",
+      "tags": [
+        "warranty"
+      ],
+      "input": "How long is the warranty on electronics?",
+      "expected": {
+        "must_include": [
+          "12-month"
+        ]
+      },
+      "output": {
+        "value": "Electronics carry a 12-month manufacturer warranty.",
+        "latency_ms": 0.045249995309859514,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001624997821636498,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "warranty-claim",
+      "check_key": "must_include",
+      "tags": [
+        "warranty"
+      ],
+      "input": "What do I need for a warranty claim?",
+      "expected": {
+        "must_include": [
+          "order number",
+          "photo"
+        ]
+      },
+      "output": {
+        "value": "Electronics carry a 12-month manufacturer warranty.",
+        "latency_ms": 0.0450000079581514,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 0.0,
+        "passed": false,
+        "reason": "missing ['order number', 'photo']",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0032910029403865337,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "warranty-claim",
+      "check_key": "short",
+      "tags": [
+        "warranty"
+      ],
+      "input": "What do I need for a warranty claim?",
+      "expected": {
+        "must_include": [
+          "order number",
+          "photo"
+        ]
+      },
+      "output": {
+        "value": "Electronics carry a 12-month manufacturer warranty.",
+        "latency_ms": 0.0450000079581514,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0017090060282498598,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "warranty-claim",
+      "check_key": "no_apology",
+      "tags": [
+        "warranty"
+      ],
+      "input": "What do I need for a warranty claim?",
+      "expected": {
+        "must_include": [
+          "order number",
+          "photo"
+        ]
+      },
+      "output": {
+        "value": "Electronics carry a 12-month manufacturer warranty.",
+        "latency_ms": 0.0450000079581514,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0015410041669383645,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "warranty-claim",
+      "check_key": "one_sentence",
+      "tags": [
+        "warranty"
+      ],
+      "input": "What do I need for a warranty claim?",
+      "expected": {
+        "must_include": [
+          "order number",
+          "photo"
+        ]
+      },
+      "output": {
+        "value": "Electronics carry a 12-month manufacturer warranty.",
+        "latency_ms": 0.0450000079581514,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0014999968698248267,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "delete-account",
+      "check_key": "must_include",
+      "tags": [
+        "account"
+      ],
+      "input": "How do I delete my account?",
+      "expected": {
+        "must_include": [
+          "Settings"
+        ]
+      },
+      "output": {
+        "value": "You can delete your account from Settings; deletion is permanent after 14 days.",
+        "latency_ms": 0.04504100070334971,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0025420013116672635,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "delete-account",
+      "check_key": "short",
+      "tags": [
+        "account"
+      ],
+      "input": "How do I delete my account?",
+      "expected": {
+        "must_include": [
+          "Settings"
+        ]
+      },
+      "output": {
+        "value": "You can delete your account from Settings; deletion is permanent after 14 days.",
+        "latency_ms": 0.04504100070334971,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.0020000006770715117,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "delete-account",
+      "check_key": "no_apology",
+      "tags": [
+        "account"
+      ],
+      "input": "How do I delete my account?",
+      "expected": {
+        "must_include": [
+          "Settings"
+        ]
+      },
+      "output": {
+        "value": "You can delete your account from Settings; deletion is permanent after 14 days.",
+        "latency_ms": 0.04504100070334971,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001624997821636498,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    },
+    {
+      "sample_id": "delete-account",
+      "check_key": "one_sentence",
+      "tags": [
+        "account"
+      ],
+      "input": "How do I delete my account?",
+      "expected": {
+        "must_include": [
+          "Settings"
+        ]
+      },
+      "output": {
+        "value": "You can delete your account from Settings; deletion is permanent after 14 days.",
+        "latency_ms": 0.04504100070334971,
+        "cost_usd": 0.0,
+        "model": null,
+        "metadata": {},
+        "error": null
+      },
+      "score": {
+        "value": 1.0,
+        "passed": true,
+        "reason": "",
+        "cost_usd": 0.0,
+        "latency_ms": 0.001624997821636498,
+        "error": null,
+        "raw": null,
+        "skipped": false
+      }
+    }
+  ],
+  "summary": {
+    "samples": 10,
+    "checks": 4,
+    "results": 40,
+    "passed": 35,
+    "errors": 0,
+    "skipped": 0,
+    "pass_rate": 0.875,
+    "mean_score": 0.8875,
+    "error_rate": 0.0,
+    "cost_usd": 0.0,
+    "duration_ms": 1.1052500049117953,
+    "per_check": [
+      {
+        "key": "must_include",
+        "n": 10,
+        "passed": 5,
+        "errors": 0,
+        "skipped": 0,
+        "pass_rate": 0.5,
+        "mean_score": 0.55,
+        "cost_usd": 0.0
+      },
+      {
+        "key": "no_apology",
+        "n": 10,
+        "passed": 10,
+        "errors": 0,
+        "skipped": 0,
+        "pass_rate": 1.0,
+        "mean_score": 1.0,
+        "cost_usd": 0.0
+      },
+      {
+        "key": "one_sentence",
+        "n": 10,
+        "passed": 10,
+        "errors": 0,
+        "skipped": 0,
+        "pass_rate": 1.0,
+        "mean_score": 1.0,
+        "cost_usd": 0.0
+      },
+      {
+        "key": "short",
+        "n": 10,
+        "passed": 10,
+        "errors": 0,
+        "skipped": 0,
+        "pass_rate": 1.0,
+        "mean_score": 1.0,
+        "cost_usd": 0.0
+      }
+    ],
+    "per_tag": {
+      "account": 1.0,
+      "edge": 0.75,
+      "returns": 0.8333333333333334,
+      "shipping": 0.875,
+      "warranty": 0.875
+    }
+  },
+  "gate_passed": true,
+  "gate_lines": [
+    "PASS 40 results scored (a run with nothing scored never passes)",
+    "PASS error rate 0.0% ≤ 0.0%",
+    "PASS pass rate 87.5% ≥ 85.0%"
+  ]
+}
