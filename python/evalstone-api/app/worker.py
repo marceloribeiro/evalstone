@@ -25,5 +25,6 @@ celery_app.conf.update(
     beat_schedule={
         # proves beat → broker → worker end to end; real schedules come with their slices
         "heartbeat": {"task": "app.tasks.heartbeat", "schedule": 300.0},
+        "score-monitors": {"task": "app.tasks.score_monitors", "schedule": 60.0},
     },
 )

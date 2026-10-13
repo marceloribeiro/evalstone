@@ -269,7 +269,14 @@ class CenterRegistry:
     (openai vs openrouter `gpt-x`) are each costed at their own rate.
     """
 
-    def __init__(self, entries: list[Provider], *, timeout_s: float | None = None) -> None:
+    def __init__(
+        self,
+        entries: list[Provider],
+        *,
+        timeout_s: float | None = None,
+        default_model: str | None = None,
+    ) -> None:
+        self.default_model = default_model  # the project's default judge model, when known
         self._by_name: dict[str, Providers] = {}
         for p in entries:
             prices = {m: (r[0], r[1]) for m, r in (p.prices or {}).items()}
@@ -277,24 +284,36 @@ class CenterRegistry:
                 {p.name: provider_config(p, timeout_s=timeout_s)}, prices=prices
             )
 
+    def split(self, model: str | None) -> tuple[str, str]:
+        """`<provider>/<model>` → (name, bare) — what the library's judge check calls first."""
+        model = model or self.default_model
+        if not model:
+            raise ProviderError("no model given and the project has no default judge model")
+        if "/" not in model:
+            raise ProviderError(f"model must be '<provider>/<model>', got {model!r}")
+        name, _, bare = model.partition("/")
+        if name not in self._by_name:
+            raise ProviderError(f"unknown provider {name!r}")
+        return name, bare
+
     def get(self, name: str) -> Any:
         if name not in self._by_name:
             raise ProviderError(f"unknown provider {name!r}")
         return self._by_name[name].get(name)
 
-    def complete(self, model: str, request: dict[str, Any]) -> ChatResponse:
-        name, _, _bare = model.partition("/")
-        if name not in self._by_name:
-            raise ProviderError(f"unknown provider {name!r}")
-        return self._by_name[name].complete(model, request)
+    def complete(self, model: str | None, request: dict[str, Any]) -> ChatResponse:
+        name, bare = self.split(model)  # None → the project's default judge model
+        return self._by_name[name].complete(f"{name}/{bare}", request)
 
     def close(self) -> None:
         for reg in self._by_name.values():
             reg.close()
 
 
-def build_registry(entries: list[Provider], *, timeout_s: float | None = None) -> CenterRegistry:
-    return CenterRegistry(entries, timeout_s=timeout_s)
+def build_registry(
+    entries: list[Provider], *, timeout_s: float | None = None, default_model: str | None = None
+) -> CenterRegistry:
+    return CenterRegistry(entries, timeout_s=timeout_s, default_model=default_model)
 
 
 def test_provider(db: Session, p: Provider, *, model: str) -> dict:

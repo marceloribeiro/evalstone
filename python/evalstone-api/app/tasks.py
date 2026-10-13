@@ -34,3 +34,34 @@ def calibrate(calibration_id: str) -> str:
         return row.status
     finally:
         db.close()
+
+
+@celery_app.task(name="app.tasks.score_monitor")
+def score_monitor(monitor_id: str) -> dict:
+    """Score one monitor's sampled traces and evaluate its alert policy."""
+    import uuid
+
+    from app.db import SessionLocal
+    from app.services import monitoring as svc
+
+    db = SessionLocal()
+    try:
+        return svc.score_monitor(db, uuid.UUID(monitor_id))
+    finally:
+        db.close()
+
+
+@celery_app.task(name="app.tasks.score_monitors")
+def score_monitors() -> int:
+    """Beat, every minute: one score_monitor task per active monitor."""
+    from app.db import SessionLocal
+    from app.services import monitoring as svc
+
+    db = SessionLocal()
+    try:
+        ids = svc.active_monitor_ids(db)
+    finally:
+        db.close()
+    for mid in ids:
+        score_monitor.delay(str(mid))
+    return len(ids)
