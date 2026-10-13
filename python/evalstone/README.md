@@ -36,6 +36,17 @@ Judges and prompt targets need a provider key in the environment
 OpenAI-compatible base URL such as OpenRouter or Ollama via `providers:`).
 Without one, judge results are **errors, never passes**, and the gate fails.
 
+## MCP server
+
+```bash
+pip install "evalstone[mcp]"
+claude mcp add evalstone -- evalstone mcp      # run from the project directory
+```
+
+Tools: `list_suites`, `run_suite`, `judge_output`, `record_sample`, `compare_runs`,
+`get_run`. The agent edits your prompt, runs the suite, reads the failures, and
+compares runs — the gate stays yours.
+
 ## Concepts
 
 `Sample` → `Dataset` (content-hashed, so every run pins an exact version) ·

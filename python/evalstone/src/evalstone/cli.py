@@ -271,6 +271,18 @@ def init(
     console.print("next: [bold]evalstone run nightly[/bold]")
 
 
+@app.command()
+def mcp(config: str = ConfigOpt) -> None:
+    """Serve this project's evals to an MCP client over stdio (Claude Code, Cursor, …)."""
+    from evalstone.mcp_server import serve
+
+    try:
+        serve(config)
+    except RuntimeError as exc:  # the SDK extra is missing
+        err.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from None
+
+
 def main() -> None:
     app()
 
