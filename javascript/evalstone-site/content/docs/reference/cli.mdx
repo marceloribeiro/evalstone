@@ -1,0 +1,24 @@
+---
+title: CLI
+description: Every evalstone command and option.
+---
+
+```
+evalstone [--version] COMMAND
+```
+
+| Command | What |
+| --- | --- |
+| `init [directory] [--project NAME]` | create a starter `evalstone.yaml`, `evals/golden.jsonl`, `evals/outputs.jsonl`, `evals/checks.py`; refuses to overwrite anything |
+| `list [--config PATH]` | datasets, configured checks, `@check`-registered checks, suites |
+| `run SUITE [--config] [--report PATH] [--baseline PATH] [--failures N] [--strict]` | run a suite, print the table, failing results and gate lines, write the JSON report; `--strict` exits 1 on a failed gate |
+| `gate SUITE [--config] [--report] [--baseline]` | `run --strict`: exit 1 when the gate fails |
+| `compare A B` | regressions, improvements, metric deltas between two reports; exit 1 when there are regressions |
+| `show REPORT [--failures N] [--markdown]` | print a saved report as a table, or as GitHub markdown |
+| `label REPORT [--out PATH] [--scale pass\|N] [--check KEY] [--labeler NAME] [--limit N]` | grade a run's outputs by hand into a labels JSONL (resumable) |
+| `mcp [--config]` | serve the project's evals to an MCP client over stdio |
+
+Exit codes: `0` ok · `1` gate failed (`gate`, `run --strict`) or regressions (`compare`) · `2` configuration or input problem (message on stderr).
+
+Environment: provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, or the
+names set under `providers:` in the config).

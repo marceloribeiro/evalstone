@@ -1,0 +1,43 @@
+---
+title: Labeling outputs
+description: Grade a run's outputs by hand; use the labels as a check and, later, to calibrate judges.
+---
+
+Human labels are the ground truth ([chapter 5](/docs/learn/building-a-golden-set),
+[chapter 6](/docs/learn/llm-as-judge)). Evalstone keeps them in a JSONL file
+you can version next to the dataset.
+
+## Grade a run
+
+```bash
+evalstone run nightly --report r.json
+evalstone label r.json --out evals/labels.jsonl
+```
+
+For every unique (sample, output) you see the input, the reference if there is
+one, and the output, then type `p` or `f` and an optional note. `s` skips, `q`
+quits; the next session resumes where you stopped. `--scale 5` grades 1–5
+(pass at 4; a 2-point scale passes only at 2, the judge's convention),
+`--check tone` records the grade for one rubric, `--labeler` names the grader.
+Outputs whose target errored are not offered: there is nothing to grade. The
+text is shown verbatim, whatever brackets or markup it contains.
+
+A label is keyed by the sample id **and a hash of the output**, so when the
+answer changes the old grade does not apply.
+
+## Use labels as a check
+
+```yaml
+checks:
+  reviewed: { type: human, labels: evals/labels.jsonl }
+```
+
+A labelled output scores from its label; an unlabelled one is an **error**,
+never a pass. Keep `human` checks in their own suite for the slice that
+warrants it; they are the most expensive check there is.
+
+## What comes next
+
+The center (planned) turns this into a queue with assignees, and runs judge
+calibration: the same samples graded by people and by a judge, agreement and
+kappa reported, the judge promoted when it clears your bar.

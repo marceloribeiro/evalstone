@@ -1,0 +1,68 @@
+---
+title: evalstone.yaml
+description: Every key in the config file.
+---
+
+```yaml
+project: support-bot
+imports: [evals.checks]              # modules whose @check registrations to load
+report: evalstone-report.json        # default report path (relative to this file)
+
+datasets:
+  golden: evals/golden.jsonl         # JSONL: {"id"?, "input", "expected"?, "tags"?, "metadata"?}
+
+checks:                              # keyed definitions: {type: <check type>, ...kwargs}
+  must_include: { type: contains }                          # expected.must_include
+  schema: { type: json_schema, schema: { type: object } }
+  short: { type: length, max_words: 120 }
+  helpful: { type: judge, rubric: "...", scale: 5 }
+  faithful: { type: rag.faithfulness }
+  reviewed: { type: human, labels: evals/labels.jsonl }
+
+suites:
+  nightly:
+    dataset: golden
+    target: { kind: callable, fn: "myapp.bot:answer" }
+    checks: [must_include, short, helpful, no_apology]      # keys above or @check names
+    gate: { min_pass_rate: 0.95, max_regression: 0.02, max_cost_usd: 2, max_error_rate: 0 }
+
+judges:
+  default_model: anthropic/claude-haiku-5-5
+
+providers:
+  anthropic: { api_key_env: ANTHROPIC_API_KEY }
+  openai:    { base_url: https://openrouter.ai/api/v1, api_key_env: OPENROUTER_API_KEY }
+  gemini:    { api_key_env: GEMINI_API_KEY }
+
+prices:                              # USD per 1M tokens (input, output); overrides the built-in table
+  my-model: [1.0, 2.0]
+```
+
+## Targets
+
+| `kind` | Keys | Produces |
+| --- | --- | --- |
+| `callable` | `fn: "module:function"` (imported from the config's directory), `whole_sample: false` | `fn(sample.input)` or `fn(sample)`; may return a value or an `Output` |
+| `http` | `url`, `method: POST`, `headers`, `body` (template; `"{input}"` leaf = raw input, embedded = text), `response_path` (dotted, digits index lists), `timeout` | the JSON response (or the path into it) |
+| `recorded` | `path: outputs.jsonl` (`{"id", "output"}` per line) or `outputs: {id: output}` | offline outputs; missing id = error |
+| `prompt` | `model` (required — never the judge's by default), `template` (`{input}` and input keys), `system`, `max_tokens` | the model's text; cost and tokens recorded |
+
+## Gate
+
+| Key | Meaning |
+| --- | --- |
+| `min_pass_rate` | fraction of results that must pass |
+| `min_mean_score` | mean 0..1 score across results |
+| `max_regression` | allowed drop in pass rate vs `--baseline` (warns when the dataset version differs) |
+| `max_cost_usd` | total run cost |
+| `max_error_rate` | default **0**: a judge outage fails the gate |
+
+A run with zero results never passes.
+
+## Model strings
+
+`<provider>/<model>`: `openai/…` (any OpenAI-compatible base URL — OpenAI,
+OpenRouter, Ollama, vLLM; `max_tokens_param` forces the token parameter name),
+`anthropic/…` (official SDK, `pip install "evalstone[anthropic]"`), `gemini/…`.
+Keys are read from the environment and never stored. Unknown models are
+reported as unpriced, never guessed.

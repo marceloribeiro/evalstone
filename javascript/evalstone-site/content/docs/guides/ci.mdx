@@ -1,0 +1,77 @@
+---
+title: Evals in CI
+description: Three ways to make a pull request go red when quality drops.
+---
+
+Pick the lightest one that fits. All three run the same suite and the same gate.
+
+## The exit code
+
+```bash
+evalstone gate nightly --baseline reports/main.json
+```
+
+Exit 1 when the gate fails. `--baseline` supplies the run that a
+`max_regression:` threshold in the suite's gate compares against (a saved
+report from `main`, say); a gate without `max_regression` ignores the baseline
+and prints no regression line. Works in any CI.
+
+## The pytest plugin
+
+Installed with the library (no extra), registered automatically.
+
+```python
+# tests/test_evals.py
+from evalstone.pytest_plugin import suite
+
+@suite("nightly")                 # runs the suite; a failing gate fails the test
+def test_support_bot(run):        # optional: the body sees the Run
+    assert run.summary.cost_usd < 1.0
+```
+
+The failure message carries the gate lines and the first failing results, so
+the test output already answers "which sample broke". Fixtures `evalstone_run`
+and `evalstone_gate` do the same without the decorator, and the decorator works
+on test methods too. Each suite writes its own report beside the config
+(`evalstone-report.<suite>.json`), so several suites in one session never
+overwrite each other; `--evalstone-config` and `--evalstone-baseline` (a
+report, or a directory of per-suite reports, relative to the config's
+directory) are pytest options. A suite without a `gate:` fails the gated forms
+rather than passing by default. Patches you make in a test (`monkeypatch` on
+your bot module) reach the suite: the run reuses the modules already imported.
+No `evalstone.yaml` → the test is skipped, not errored.
+
+## The GitHub Action
+
+```yaml
+# .github/workflows/evals.yml (the minimum; every input is in the action's README)
+permissions: { contents: read, pull-requests: write }
+steps:
+  - uses: actions/checkout@v4
+  - uses: marceloribeiro/evalstone/action@main
+    with:
+      suite: nightly
+      working-directory: evals          # where evalstone.yaml lives
+      install: "evalstone[anthropic] @ git+https://github.com/marceloribeiro/evalstone.git@main#subdirectory=python/evalstone"   # until the PyPI publish; then "evalstone[anthropic]"
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+The action installs evalstone (`install:` is a pip spec: a published name once
+it exists, a git URL as above, or a path inside a monorepo), runs the suite,
+writes the report into the job summary, posts a PR comment (updated in place on
+every push) with the verdict, the per-check table and the failing samples, and
+fails the check when the gate does not pass. The comment needs a token that can
+write to the pull request: on pull requests from forks the token is read-only,
+so the comment is skipped and the job summary is the report. Every input,
+output and default:
+[action/README.md](https://github.com/marceloribeiro/evalstone/blob/main/action/README.md).
+The comment is `evalstone show <report> --markdown`, so you can see it locally.
+
+The Evalstone repository runs this action on its own pull requests against the
+`rag-bot` sample.
+
+## What to block on
+
+[Chapter 7](/docs/learn/gates-and-ci) in one line: block on deterministic and
+calibrated checks with a tolerance above your noise floor; report the rest.

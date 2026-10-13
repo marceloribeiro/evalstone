@@ -1,0 +1,5 @@
+{
+  "title": "Reference",
+  "description": "Every command, config key and check",
+  "pages": ["cli", "config", "checks"]
+}
