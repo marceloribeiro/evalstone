@@ -39,6 +39,8 @@ test.describe('Learning center', () => {
 
   test('Evalstone pages state their status honestly', async ({ page }) => {
     const docs = new DocsPage(page);
+    await docs.goto('/evalstone');
+    await expect(page.getByText('are live. The center is next', { exact: false })).toBeVisible();
     await docs.goto('/evalstone/how-it-works');
     await expect(page.getByText('Released', { exact: true })).toBeVisible();
     await docs.goto('/evalstone/library');

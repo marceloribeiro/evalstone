@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: marceloribeiro/evalstone/action@main
+      - uses: marceloribeiro/evalstone/action@action-v0.1.0   # pin a tag, not main
         with:
           suite: nightly
           working-directory: evals          # where evalstone.yaml lives

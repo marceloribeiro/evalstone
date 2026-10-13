@@ -21,11 +21,11 @@ export function StatusAndCta() {
             </li>
             <li className="rounded-lg border border-fd-border p-4">
               <span className="font-mono text-xs text-pass">live</span>
-              <p className="mt-1 font-medium">Library + CLI on PyPI (0.1.0)</p>
+              <p className="mt-1 font-medium">Library + CLI on PyPI</p>
             </li>
             <li className="rounded-lg border border-fd-border p-4">
               <span className="font-mono text-xs text-pass">live</span>
-              <p className="mt-1 font-medium">MCP server · pytest · GitHub Action · labeling</p>
+              <p className="mt-1 font-medium">MCP server · pytest · labeling · GitHub Action</p>
             </li>
             <li className="rounded-lg border border-fd-border p-4">
               <span className="font-mono text-xs text-fd-muted-foreground">next</span>
@@ -43,7 +43,7 @@ export function StatusAndCta() {
               Follow on GitHub
             </ButtonLink>
             <ButtonLink href="/docs/evalstone" variant="secondary">
-              Read the design
+              Read the docs
             </ButtonLink>
           </div>
         </div>
