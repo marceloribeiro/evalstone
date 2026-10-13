@@ -2,7 +2,7 @@
 
 All notable changes to `python/evalstone`. Semantic versioning; tags `lib-vX.Y.Z`.
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-10-13
 
 The first usable release: the hero path from `evalstone.yaml` to a gated run.
 
@@ -25,3 +25,23 @@ The first usable release: the hero path from `evalstone.yaml` to a gated run.
   (refusal, no_pii, forbidden), **pairwise** comparison (both orders),
   **trajectory** (tool_called, tool_order, max_steps, no_repeated_calls, finished).
 - **Sample**: `samples/rag-bot` — a no-LLM retrieval bot with a gated suite.
+- **MCP server** (`evalstone mcp`, extra `evalstone[mcp]`): `list_suites`,
+  `run_suite`, `judge_output`, `record_sample`, `compare_runs`, `get_run` over
+  stdio; calls run one at a time, stray stdout goes to stderr, one provider
+  registry and judge cache per session, report paths relative to the config.
+- **pytest plugin** (entry point `pytest11`): `@suite("name")`, fixtures
+  `evalstone_run` / `evalstone_gate` / `evalstone_config`, options
+  `--evalstone-config` and `--evalstone-baseline` (a report or a directory of
+  them); one report per suite (`evalstone-report.<suite>.json`); a suite without
+  a gate fails the gated forms; the package imports lazily so the plugin costs
+  nothing in unrelated test sessions.
+- **GitHub Action** (`action/`): run a suite on a pull request, job summary,
+  in-place PR comment (`evalstone show --markdown`), fail on the gate; inputs
+  bound through the environment; `report` output is an absolute path.
+- **Human labels**: `evalstone label <report>` grades outputs in the terminal
+  (pass/fail or a 1..N scale, resumable, keyed by sample id + output hash); the
+  `human` check scores from the labels file and errors on unlabelled outputs.
+- **Reports**: `Run.markdown()`, `Run.failure_lines()`, results carry the
+  sample's input and expected value.
+- **Loading**: project modules are reused across runs in one process unless a
+  file changed or the registry was cleared, so test patches reach suites.
