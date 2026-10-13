@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "evalstone"
+dynamic = ["version"]
+description = "The plug-and-play evals layer for LLM-based projects: datasets, checks, suites, runs and gates."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [{ name = "Marcelo Ribeiro" }]
+keywords = ["llm", "evals", "evaluation", "testing", "rag", "agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = [
+  "pydantic>=2.14,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9.1",
+  "ruff>=0.17",
+]
+
+[project.urls]
+Homepage = "https://evalstone.com"
+Documentation = "https://evalstone.com/docs"
+Repository = "https://github.com/marceloribeiro/evalstone"
+
+[tool.hatch.version]
+path = "src/evalstone/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/evalstone"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.format]
+quote-style = "double"
