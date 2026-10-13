@@ -18,7 +18,20 @@ class Run(TimestampedModel):
 
     __tablename__ = "runs"
     __table_args__ = (
-        Index("uq_run_project_client_id", "project_id", "client_run_id", unique=True),
+        Index(
+            "uq_run_project_client_id_live",
+            "project_id",
+            "client_run_id",
+            unique=True,
+            postgresql_where="deleted_at IS NULL",
+        ),
+        Index(  # one baseline per (project, suite), enforced by the database
+            "uq_run_suite_baseline",
+            "project_id",
+            "suite",
+            unique=True,
+            postgresql_where="is_baseline AND deleted_at IS NULL",
+        ),
         Index("ix_runs_project_suite_started", "project_id", "suite", "started_at"),
     )
 
@@ -35,7 +48,7 @@ class Run(TimestampedModel):
     target: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     check_keys: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     git_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    trigger: Mapped[str] = mapped_column(String(20), nullable=False, default="cli")
+    trigger: Mapped[str] = mapped_column(String(40), nullable=False, default="cli")
     baseline_run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("runs.id"), nullable=True
     )
@@ -72,6 +85,7 @@ class RunResult(TimestampedModel):
     run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("runs.id"), nullable=False, index=True
     )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)  # the report's order
     sample_key: Mapped[str] = mapped_column(String(200), nullable=False)
     check_key: Mapped[str] = mapped_column(String(200), nullable=False)
     tags: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

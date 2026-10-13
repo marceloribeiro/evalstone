@@ -30,7 +30,7 @@ def upgrade() -> None:
         sa.Column("target", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("check_keys", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("git_sha", sa.String(length=64), nullable=True),
-        sa.Column("trigger", sa.String(length=20), nullable=False),
+        sa.Column("trigger", sa.String(length=40), nullable=False),
         sa.Column("baseline_run_id", sa.UUID(), nullable=True),
         sa.Column("client_baseline_run_id", sa.String(length=64), nullable=True),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
@@ -83,11 +83,23 @@ def upgrade() -> None:
         "ix_runs_project_suite_started", "runs", ["project_id", "suite", "started_at"], unique=False
     )
     op.create_index(
-        "uq_run_project_client_id", "runs", ["project_id", "client_run_id"], unique=True
+        "uq_run_project_client_id_live",
+        "runs",
+        ["project_id", "client_run_id"],
+        unique=True,
+        postgresql_where="deleted_at IS NULL",
+    )
+    op.create_index(  # one baseline per (project, suite)
+        "uq_run_suite_baseline",
+        "runs",
+        ["project_id", "suite"],
+        unique=True,
+        postgresql_where="is_baseline AND deleted_at IS NULL",
     )
     op.create_table(
         "run_results",
         sa.Column("run_id", sa.UUID(), nullable=False),
+        sa.Column("position", sa.Integer(), nullable=False),
         sa.Column("sample_key", sa.String(length=200), nullable=False),
         sa.Column("check_key", sa.String(length=200), nullable=False),
         sa.Column("tags", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
@@ -142,7 +154,8 @@ def downgrade() -> None:
     op.drop_index(op.f("ix_run_results_run_id"), table_name="run_results")
     op.drop_index("ix_results_run_check_passed", table_name="run_results")
     op.drop_table("run_results")
-    op.drop_index("uq_run_project_client_id", table_name="runs")
+    op.drop_index("uq_run_suite_baseline", table_name="runs")
+    op.drop_index("uq_run_project_client_id_live", table_name="runs")
     op.drop_index("ix_runs_project_suite_started", table_name="runs")
     op.drop_index(op.f("ix_runs_project_id"), table_name="runs")
     op.drop_table("runs")

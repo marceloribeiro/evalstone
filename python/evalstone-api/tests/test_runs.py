@@ -156,3 +156,125 @@ def test_cap_on_results(client, project):
         {**copy.deepcopy(base), "sample_id": f"s{i}"} for i in range(svc.MAX_RESULTS_PER_RUN + 1)
     ]
     assert _push(client, project, big).status_code == 422
+
+
+# --- regressions from the #29 review ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda r: r.__setitem__("id", "x" * 65),
+        lambda r: r.__setitem__("trigger", "github-actions-nightly-and-then-some-more-text"),
+        lambda r: r["results"][0].__setitem__("sample_id", "s" * 201),
+    ],
+)
+def test_over_long_library_strings_are_422_not_500(client, project, mutate):
+    report = _variant(REPORT, run_id="0a0a0a0a0a0a")
+    mutate(report)
+    r = _push(client, project, report)
+    assert r.status_code == 422 and "longer than" in r.json()["detail"]
+
+
+def test_two_baselines_per_suite_are_impossible_at_the_database(client, project, db):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import Run
+
+    a = _push(client, project, REPORT).json()["id"]
+    b = _push(client, project, _variant(REPORT, run_id="1b1b1b1b1b1b")).json()["id"]
+    import uuid
+
+    db.get(Run, uuid.UUID(a)).is_baseline = True
+    db.get(Run, uuid.UUID(b)).is_baseline = True
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
+
+
+def test_soft_deleted_run_frees_its_client_run_id(client, project, db):
+    import uuid
+    from datetime import UTC, datetime
+
+    from app.models import Run
+
+    first = _push(client, project, REPORT).json()["id"]
+    db.get(Run, uuid.UUID(first)).deleted_at = datetime.now(UTC)
+    db.commit()
+    again = _push(client, project, REPORT)
+    assert again.status_code == 201 and again.json()["id"] != first
+
+
+def test_report_keeps_the_library_result_order(client, project):
+    report = _variant(REPORT, run_id="2c2c2c2c2c2c")
+    report["results"] = list(reversed(report["results"]))
+    rid = _push(client, project, report).json()["id"]
+    out = client.get(
+        f"/projects/{project['id']}/runs/{rid}/report", headers=project["headers"]
+    ).json()
+    assert [(r["sample_id"], r["check_key"]) for r in out["results"]] == [
+        (r["sample_id"], r["check_key"]) for r in report["results"]
+    ]
+
+
+def test_concurrent_pushes_of_one_report_serialise(client, project, db):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.models import Run
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = sorted(pool.map(lambda _: _push(client, project, REPORT).status_code, range(2)))
+    assert statuses == [200, 201], statuses
+    assert db.query(Run).count() == 1 and db.query(RunResult).count() == 40
+
+
+def test_oversized_result_is_422(client, project):
+    report = _variant(REPORT, run_id="3d3d3d3d3d3d")
+    report["results"][0]["output"]["value"] = "x" * (svc.MAX_RESULT_BYTES + 1)
+    r = _push(client, project, report)
+    assert r.status_code == 422 and "bytes" in r.json()["detail"]
+
+
+def test_summary_is_recomputed_from_the_rows(client, project):
+    report = _variant(REPORT, run_id="4e4e4e4e4e4e")
+    report["summary"]["pass_rate"] = 1.0  # a lying client
+    report["summary"]["results"] = 999
+    run = _push(client, project, report).json()
+    assert run["pass_rate"] == pytest.approx(0.875) and run["summary"]["results"] == 40
+    assert (
+        run["summary"]["duration_ms"] == report["summary"]["duration_ms"]
+    )  # only the client knows
+
+
+def test_dataset_link_prefers_the_named_live_dataset(client, project):
+    h, pid = project["headers"], project["id"]
+    samples = [{"input": "x", "expected": "y"}]
+    ids = {}
+    for name in ("other", "golden"):
+        did = client.post(f"/projects/{pid}/datasets", json={"name": name}, headers=h).json()["id"]
+        ids[name] = client.post(
+            f"/projects/{pid}/datasets/{did}/versions", json={"samples": samples}, headers=h
+        ).json()
+        ids[name]["dataset_id"] = did
+    report = _variant(REPORT, run_id="5f5f5f5f5f5f")
+    report["dataset"], report["dataset_hash"] = "golden", ids["golden"]["content_hash"]
+    assert _push(client, project, report).json()["dataset_version_id"] == ids["golden"]["id"]
+    client.delete(f"/projects/{pid}/datasets/{ids['golden']['dataset_id']}", headers=h)
+    report["id"] = "6a6a6a6a6a6a"
+    assert _push(client, project, report).json()["dataset_version_id"] == ids["other"]["id"]
+
+
+def test_history_paging_is_stable_on_started_at_ties(client, project):
+    h, pid = project["headers"], project["id"]
+    ids = {
+        _push(client, project, _variant(REPORT, run_id=f"7{i}" * 6)).json()["id"] for i in range(3)
+    }
+    seen = [
+        client.get(f"/projects/{pid}/runs?limit=1&offset={o}", headers=h).json()["items"][0]["id"]
+        for o in range(3)
+    ]
+    assert set(seen) == ids and len(set(seen)) == 3
+
+
+def test_no_unused_baseline_helper():
+    assert not hasattr(svc, "current_baseline")
