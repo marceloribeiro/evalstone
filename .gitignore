@@ -1,0 +1,41 @@
+# ── Secrets / local env ────────────────────────────────────────────────
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.production
+!**/.env.example
+
+# ── OS / editor ────────────────────────────────────────────────────────
+.DS_Store
+*.pem
+*.swp
+*~
+**/certs/
+
+# ── Python (python/) ───────────────────────────────────────────────────
+**/venv/
+**/.venv/
+**/__pycache__/
+*.pyc
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+*.egg-info/
+**/dist/
+.coverage
+htmlcov/
+
+# ── Node / Next.js (javascript/) ───────────────────────────────────────
+**/node_modules/
+**/.next/
+**/.source/
+**/out/
+**/build/
+**/coverage/
+*.tsbuildinfo
+next-env.d.ts
+**/test-results/
+**/playwright-report/
+**/playwright/.cache/
+**/logs/
+npm-debug.log*
