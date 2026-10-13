@@ -1,6 +1,7 @@
 import getpass
 from functools import lru_cache
 
+from cryptography.fernet import Fernet
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
@@ -34,6 +35,11 @@ class Settings(BaseSettings):
     jwt_secret: str  # no default: set JWT_SECRET (see .env.example); ≥ 32 bytes outside dev/test
     jwt_expires_minutes: int = 60 * 24 * 7
     bcrypt_rounds: int = 12  # tests lower it; production keeps the default
+
+    # Fernet key for org provider API keys; empty derives a fixed key in development/test only
+    provider_creds_key: str = ""
+    provider_allow_private_urls: bool = False  # self-hosted Ollama next to the center
+    provider_test_timeout_s: float = 15.0
 
     cors_origins: str = "http://localhost:3000"  # comma-separated
 
@@ -72,6 +78,15 @@ class Settings(BaseSettings):
                 raise ValueError(f"{name} is {what}; set a real one in .env ({self.app_env})")
         if len(self.jwt_secret.encode()) < MIN_JWT_SECRET_BYTES:
             raise ValueError(f"JWT_SECRET must be at least {MIN_JWT_SECRET_BYTES} bytes (RFC 7518)")
+        if not self.provider_creds_key:
+            raise ValueError("PROVIDER_CREDS_KEY is empty; set a Fernet key and never change it")
+        try:
+            Fernet(self.provider_creds_key.encode())
+        except (ValueError, TypeError) as err:
+            raise ValueError(
+                "PROVIDER_CREDS_KEY is not a valid Fernet key (python -c "
+                "'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+            ) from err
         return self
 
 

@@ -1,14 +1,17 @@
 import getpass
 
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy.engine import make_url
 
 from app.config import Settings, get_settings
 
+_creds = Fernet.generate_key().decode()
 _x = {
     "app_env": "x",
     "docs_password": "s3cret",
     "jwt_secret": "a" * 40,
+    "provider_creds_key": _creds,
 }  # a non-local env with a real password
 
 
@@ -55,19 +58,36 @@ _strong = "a" * 40
 @pytest.mark.parametrize("password", ["", "change-me"])
 def test_production_refuses_the_published_docs_password(password):
     with pytest.raises(ValueError, match="DOCS_PASSWORD"):
-        Settings(app_env="production", docs_password=password, jwt_secret=_strong)
+        Settings(
+            app_env="production",
+            docs_password=password,
+            jwt_secret=_strong,
+            provider_creds_key=_creds,
+        )
 
 
 @pytest.mark.parametrize("secret", ["", "dev-only-change-me-dev-only-change-me"])
 def test_production_refuses_the_published_jwt_secret(secret):
     with pytest.raises(ValueError, match="JWT_SECRET"):
-        Settings(app_env="production", docs_password="s3cret", jwt_secret=secret)
+        Settings(
+            app_env="production",
+            docs_password="s3cret",
+            jwt_secret=secret,
+            provider_creds_key=_creds,
+        )
 
 
 def test_production_refuses_a_short_jwt_secret():
     with pytest.raises(ValueError, match="32 bytes"):
-        Settings(app_env="production", docs_password="s3cret", jwt_secret="short")
-    assert Settings(app_env="production", docs_password="s3cret", jwt_secret=_strong).jwt_secret
+        Settings(
+            app_env="production",
+            docs_password="s3cret",
+            jwt_secret="short",
+            provider_creds_key=_creds,
+        )
+    assert Settings(
+        app_env="production", docs_password="s3cret", jwt_secret=_strong, provider_creds_key=_creds
+    ).jwt_secret
 
 
 def test_development_and_test_keep_the_default_docs_password():

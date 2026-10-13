@@ -38,6 +38,7 @@ app/
   schemas/       pydantic request/response models
   deps.py        current user (JWT), org membership + role gate, project context, ingest key
   security.py    bcrypt passwords, HS256 JWTs, ingest-key generation/hashing
+  crypto.py      Fernet encrypt/decrypt for provider keys (PROVIDER_CREDS_KEY — stable forever)
   worker.py      Celery app (+ beat schedule)
   tasks.py       Celery tasks
   support/systemd/  evalstone-api · -celery · -celery-beat units
@@ -58,6 +59,8 @@ tests/
 | Projects | `GET,POST /organizations/{id}/projects` · `GET,PATCH,DELETE /projects/{id}` | member reads, admin+ writes |
 | Ingest keys | `GET,POST /projects/{id}/ingest-keys` · `DELETE …/ingest-keys/{key_id}` (revoke) | admin+. The `es_…` secret is returned once; only its sha256 is stored |
 | Ingest | `GET /ingest/whoami` | `Authorization: Bearer es_…` |
+| Providers | `GET,POST /organizations/{id}/providers` · `GET,PATCH,DELETE …/providers/{pid}` · `POST …/providers/{pid}/test` | members read (masked), admin+ write. Keys are Fernet-encrypted with `PROVIDER_CREDS_KEY`, write-only (`has_api_key` + `key_last4`), decrypted only in-process to make a call. `base_url` passes an SSRF guard (`PROVIDER_ALLOW_PRIVATE_URLS` for a local gateway) |
+| Judge settings | `GET,PUT /projects/{id}/judge-settings` | default `<provider>/<model>` + per-check overrides; providers must exist in the org |
 | Health | `GET /health` · `GET /ready` · `GET /docs` (basic auth) | — |
 
 Outsiders get `404`, not `403`, for organizations and projects they do not belong to.
