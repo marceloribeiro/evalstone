@@ -5,7 +5,11 @@ from sqlalchemy.engine import make_url
 
 from app.config import Settings, get_settings
 
-_x = {"app_env": "x", "docs_password": "s3cret"}  # a non-local env with a real password
+_x = {
+    "app_env": "x",
+    "docs_password": "s3cret",
+    "jwt_secret": "a" * 40,
+}  # a non-local env with a real password
 
 
 def test_tests_run_against_the_test_database():
@@ -45,12 +49,28 @@ def test_cors_origins_are_split_and_trimmed():
     ]
 
 
+_strong = "a" * 40
+
+
 @pytest.mark.parametrize("password", ["", "change-me"])
 def test_production_refuses_the_published_docs_password(password):
     with pytest.raises(ValueError, match="DOCS_PASSWORD"):
-        Settings(app_env="production", docs_password=password)
+        Settings(app_env="production", docs_password=password, jwt_secret=_strong)
+
+
+@pytest.mark.parametrize("secret", ["", "dev-only-change-me-dev-only-change-me"])
+def test_production_refuses_the_published_jwt_secret(secret):
+    with pytest.raises(ValueError, match="JWT_SECRET"):
+        Settings(app_env="production", docs_password="s3cret", jwt_secret=secret)
+
+
+def test_production_refuses_a_short_jwt_secret():
+    with pytest.raises(ValueError, match="32 bytes"):
+        Settings(app_env="production", docs_password="s3cret", jwt_secret="short")
+    assert Settings(app_env="production", docs_password="s3cret", jwt_secret=_strong).jwt_secret
 
 
 def test_development_and_test_keep_the_default_docs_password():
     assert Settings(app_env="development").docs_password == "change-me"
     assert Settings(app_env="test", docs_password="").docs_password == ""
+    assert Settings(app_env="development", jwt_secret="short").jwt_secret == "short"

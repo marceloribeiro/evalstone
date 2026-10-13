@@ -5,7 +5,8 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
-INSECURE_DOCS_PASSWORDS = {"", "change-me"}
+INSECURE_SECRETS = {"", "change-me", "dev-only-change-me-dev-only-change-me"}
+MIN_JWT_SECRET_BYTES = 32  # HS256 key floor (RFC 7518 §3.2)
 
 
 class Settings(BaseSettings):
@@ -29,6 +30,10 @@ class Settings(BaseSettings):
 
     docs_username: str = "evalstone"
     docs_password: str = "change-me"
+
+    jwt_secret: str  # no default: set JWT_SECRET (see .env.example); ≥ 32 bytes outside dev/test
+    jwt_expires_minutes: int = 60 * 24 * 7
+    bcrypt_rounds: int = 12  # tests lower it; production keeps the default
 
     cors_origins: str = "http://localhost:3000"  # comma-separated
 
@@ -57,12 +62,16 @@ class Settings(BaseSettings):
         ).render_as_string(hide_password=False)
 
     @model_validator(mode="after")
-    def _docs_password_is_not_the_published_default(self) -> "Settings":
-        """Fail closed: outside development/test the published default must not guard /docs."""
-        local = self.app_env in {"development", "test"}
-        if not local and self.docs_password in INSECURE_DOCS_PASSWORDS:
-            what = "empty" if not self.docs_password else "the published default"
-            raise ValueError(f"DOCS_PASSWORD is {what}; set a real one in .env ({self.app_env})")
+    def _secrets_are_not_the_published_defaults(self) -> "Settings":
+        """Fail closed: outside development/test a published dev value must not guard anything."""
+        if self.app_env in {"development", "test"}:
+            return self
+        for name, value in (("DOCS_PASSWORD", self.docs_password), ("JWT_SECRET", self.jwt_secret)):
+            if value in INSECURE_SECRETS:
+                what = "empty" if not value else "the published default"
+                raise ValueError(f"{name} is {what}; set a real one in .env ({self.app_env})")
+        if len(self.jwt_secret.encode()) < MIN_JWT_SECRET_BYTES:
+            raise ValueError(f"JWT_SECRET must be at least {MIN_JWT_SECRET_BYTES} bytes (RFC 7518)")
         return self
 
 

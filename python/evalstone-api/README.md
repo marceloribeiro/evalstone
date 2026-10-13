@@ -34,8 +34,10 @@ app/
   errors.py      NotFound / Conflict / Forbidden / Unauthorized / Invalid
   models/        SQLAlchemy 2 models (TimestampedModel: uuid pk, created/updated/deleted_at)
   routers/       HTTP only — call services, never the database
-  services/      business logic — own the models            (from the organizations slice)
-  schemas/       pydantic request/response models            (from the organizations slice)
+  services/      business logic — own the models
+  schemas/       pydantic request/response models
+  deps.py        current user (JWT), org membership + role gate, project context, ingest key
+  security.py    bcrypt passwords, HS256 JWTs, ingest-key generation/hashing
   worker.py      Celery app (+ beat schedule)
   tasks.py       Celery tasks
   support/systemd/  evalstone-api · -celery · -celery-beat units
@@ -44,6 +46,21 @@ nginx/           api.evalstone.com vhost (http, then https)
 scripts/console.py
 tests/
 ```
+
+## Endpoints (so far)
+
+| Area | Routes | Who |
+| --- | --- | --- |
+| Auth | `POST /auth/register` · `POST /auth/login` · `GET /me` | anyone / bearer JWT |
+| Organizations | `GET,POST /organizations` · `GET,PATCH,DELETE /organizations/{id}` | member · admin · owner |
+| Members | `GET /organizations/{id}/members` · `PATCH,DELETE …/members/{member_id}` | admin+; ownership changes need an owner; the last owner stays |
+| Invitations | `GET,POST /organizations/{id}/invitations` · `DELETE …/invitations/{inv_id}` | admin+. An existing user joins at once; a new address joins on register |
+| Projects | `GET,POST /organizations/{id}/projects` · `GET,PATCH,DELETE /projects/{id}` | member reads, admin+ writes |
+| Ingest keys | `GET,POST /projects/{id}/ingest-keys` · `DELETE …/ingest-keys/{key_id}` (revoke) | admin+. The `es_…` secret is returned once; only its sha256 is stored |
+| Ingest | `GET /ingest/whoami` | `Authorization: Bearer es_…` |
+| Health | `GET /health` · `GET /ready` · `GET /docs` (basic auth) | — |
+
+Outsiders get `404`, not `403`, for organizations and projects they do not belong to.
 
 ## Deploy
 
