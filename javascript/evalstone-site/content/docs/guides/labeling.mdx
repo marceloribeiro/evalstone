@@ -17,8 +17,10 @@ evalstone label r.json --out evals/labels.jsonl
 For every unique (sample, output) you see the input, the reference if there is
 one, and the output, then type `p` or `f` and an optional note. `s` skips, `q`
 quits; the next session resumes where you stopped. `--scale 5` grades 1–5
-(pass at 4), `--check tone` records the grade for one rubric, `--labeler`
-names the grader.
+(pass at 4; a 2-point scale passes only at 2, the judge's convention),
+`--check tone` records the grade for one rubric, `--labeler` names the grader.
+Outputs whose target errored are not offered: there is nothing to grade. The
+text is shown verbatim, whatever brackets or markup it contains.
 
 A label is keyed by the sample id **and a hash of the output**, so when the
 answer changes the old grade does not apply.
