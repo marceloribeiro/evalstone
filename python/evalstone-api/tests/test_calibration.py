@@ -190,3 +190,125 @@ def test_roles_and_scope(client, project, register):
         ).status_code
         == 401
     )
+
+
+# --- regressions from the #36 review ---------------------------------------------------------
+
+
+def test_ingest_stamps_output_hash_and_judge_version(client, project, db):
+    from app.models import RunResult
+    from app.services import label_queues as lq
+    from app.services.runs import output_hash_of
+
+    h = project["headers"]
+    client.post(f"/projects/{project['id']}/runs", json=_judged_report(), headers=h)
+    rows = db.query(RunResult).all()
+    assert all(r.output_hash == output_hash_of(r.output) for r in rows)
+    assert {r.judge_version for r in rows} == {JV} and {r.judge_model for r in rows} == {
+        "local/tiny"
+    }
+    assert lq._hash_of is output_hash_of  # one hashing rule for tasks and calibration
+
+
+def test_latest_verdict_is_by_run_finish_time_not_ingest_order(client, project):
+    """A backfilled OLDER run pushed later must not override the newer verdict."""
+    h = project["headers"]
+    newer = _judged_report(run_id="judge00newer")  # express passes
+    older = _judged_report(run_id="judge00older", flip={"express"})  # express failed, earlier
+    older["started_at"], older["finished_at"] = "2026-10-01T00:00:00Z", "2026-10-01T00:00:01Z"
+    client.post(f"/projects/{project['id']}/runs", json=newer, headers=h)
+    client.post(f"/projects/{project['id']}/runs", json=older, headers=h)  # ingested last
+    res = next(r for r in newer["results"] if r["sample_id"] == "express")
+    _label(client, project, res, passed=True)
+    r = client.post(
+        f"/projects/{project['id']}/calibrations", json={"check_key": "helpful"}, headers=h
+    ).json()
+    assert r["status"] == "done" and r["confusion"] == {"tp": 1, "fp": 0, "fn": 0, "tn": 0}
+
+
+def test_errored_and_skipped_verdicts_are_not_verdicts(client, project):
+    h = project["headers"]
+    report = _judged_report()
+    res = next(r for r in report["results"] if r["sample_id"] == "express")
+    res["score"].update({"error": "judge: provider down", "passed": False, "value": 0.0})
+    client.post(f"/projects/{project['id']}/runs", json=report, headers=h)
+    _label(client, project, res, passed=True)
+    r = client.post(
+        f"/projects/{project['id']}/calibrations", json={"check_key": "helpful"}, headers=h
+    ).json()
+    assert (
+        r["status"] == "failed" and "no overlap" in r["error"]
+    )  # the only labelled verdict errored
+
+
+def test_db_error_inside_compute_is_recorded_not_stuck_running(client, project, db, monkeypatch):
+    import uuid
+
+    from sqlalchemy import text
+
+    from app.models import Calibration
+    from app.services import calibration as cal
+
+    h = project["headers"]
+    client.post(f"/projects/{project['id']}/runs", json=_judged_report(), headers=h)
+    real = cal.compute
+
+    def poisoned(db_, *a, **k):
+        db_.execute(text("SELECT * FROM no_such_table"))  # aborts the PG transaction
+        return real(db_, *a, **k)
+
+    monkeypatch.setattr(cal, "compute", poisoned)
+    r = client.post(
+        f"/projects/{project['id']}/calibrations", json={"check_key": "helpful"}, headers=h
+    ).json()
+    assert r["status"] == "failed" and "no_such_table" in r["error"]
+    assert db.get(Calibration, uuid.UUID(r["id"])).status == "failed"
+
+
+def test_broker_failure_marks_the_row_failed(client, project, monkeypatch):
+    from app import tasks
+
+    h = project["headers"]
+    client.post(f"/projects/{project['id']}/runs", json=_judged_report(), headers=h)
+
+    def boom(*a, **k):
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(tasks.calibrate, "delay", boom)
+    r = client.post(
+        f"/projects/{project['id']}/calibrations", json={"check_key": "helpful"}, headers=h
+    )
+    assert r.status_code == 202 and r.json()["status"] == "failed"
+    assert "could not enqueue" in r.json()["error"] and "redis down" in r.json()["error"]
+
+
+def test_too_many_labels_fails_loudly(client, project, monkeypatch):
+    from app.services import calibration as cal
+
+    h = project["headers"]
+    report = _judged_report()
+    client.post(f"/projects/{project['id']}/runs", json=report, headers=h)
+    for res in report["results"][:3]:
+        _label(client, project, res, passed=True)
+    monkeypatch.setattr(cal, "MAX_PAIRS", 2)
+    r = client.post(
+        f"/projects/{project['id']}/calibrations", json={"check_key": "helpful"}, headers=h
+    ).json()
+    assert r["status"] == "failed" and "the limit is 2" in r["error"]
+
+
+def test_latest_version_is_per_check_and_by_finish_time(client, project, db):
+    from uuid import UUID
+
+    from app.services import calibration as cal
+    from app.services import projects as project_svc
+
+    h = project["headers"]
+    a = _judged_report(run_id="judge0000000a", jv="aaaaaaaaaaaaaaaa")
+    b = _judged_report(run_id="judge0000000b", jv="bbbbbbbbbbbbbbbb")
+    b["started_at"], b["finished_at"] = "2026-10-01T00:00:00Z", "2026-10-01T00:00:01Z"  # older
+    client.post(f"/projects/{project['id']}/runs", json=b, headers=h)
+    client.post(f"/projects/{project['id']}/runs", json=a, headers=h)
+    p = project_svc.get_project(db, UUID(project["id"]))
+    assert cal.latest_version(db, p, "helpful") == "aaaaaaaaaaaaaaaa"
+    assert cal.latest_version(db, p, "other") is None

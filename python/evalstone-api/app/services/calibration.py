@@ -1,10 +1,10 @@
 """Judge calibration: a judge version against the humans, on what both have graded.
 
-`judges()` lists the judge versions seen in the project's run results (the library stamps
-`raw.judge_version`, `raw.model` on every judge verdict). `compute()` joins those results
-with the labels of the same (sample, output hash) and reports agreement, Cohen's kappa, a
-pass/fail confusion matrix and the mean absolute error of the 0..1 values. The join runs in
-a Celery task (`app.tasks.calibrate`) so a large project never blocks a request.
+`judges()` lists the judge versions seen in the project's run results (stamped at ingest
+from the library's `raw.judge_version` / `raw.model`). `compute()` joins — in SQL — the
+latest non-errored verdict per (sample, output hash) of one version with the labels of the
+same key and reports agreement, Cohen's kappa, a pass/fail confusion matrix and the mean
+absolute error of the 0..1 values. The job runs in Celery (`app.tasks.calibrate`).
 """
 
 from __future__ import annotations
@@ -13,34 +13,39 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from evalstone.checks.human import output_hash
-from evalstone.output import Output
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
 from app.errors import Invalid, NotFound
 from app.models import Calibration, Label, Project, Run, RunResult, User
 
-MAX_RESULTS_SCANNED = 50_000
-_JV = RunResult.raw["judge_version"].astext
-_MODEL = RunResult.raw["model"].astext
+MAX_PAIRS = 50_000  # labelled outputs a calibration may cover; above it the job fails loudly
 
 
 def judges(db: Session, project: Project) -> list[dict[str, Any]]:
-    """Every (check_key, judge_version) with its model, result and run counts and when seen."""
+    """Every (check_key, judge_version) with its model, result and run counts and when seen.
+
+    `model` is the provider-reported id of the verdicts (it can vary within a version —
+    dated snapshots); the smallest is shown, deterministically.
+    """
     rows = db.execute(
         select(
             RunResult.check_key,
-            _JV,
-            func.max(_MODEL),
+            RunResult.judge_version,
+            func.min(RunResult.judge_model),
             func.count(),
             func.count(func.distinct(RunResult.run_id)),
             func.min(RunResult.created_at),
             func.max(RunResult.created_at),
         )
         .join(Run, Run.id == RunResult.run_id)
-        .where(Run.project_id == project.id, Run.deleted_at.is_(None), _JV.is_not(None))
-        .group_by(RunResult.check_key, _JV)
+        .where(
+            Run.project_id == project.id,
+            Run.deleted_at.is_(None),
+            RunResult.judge_version.is_not(None),
+        )
+        .group_by(RunResult.check_key, RunResult.judge_version)
         .order_by(RunResult.check_key, func.max(RunResult.created_at).desc())
     ).all()
     return [
@@ -55,6 +60,22 @@ def judges(db: Session, project: Project) -> list[dict[str, Any]]:
         }
         for r in rows
     ]
+
+
+def latest_version(db: Session, project: Project, check_key: str) -> str | None:
+    """The judge version of the most recently FINISHED run that graded `check_key`."""
+    return db.scalar(
+        select(RunResult.judge_version)
+        .join(Run, Run.id == RunResult.run_id)
+        .where(
+            Run.project_id == project.id,
+            Run.deleted_at.is_(None),
+            RunResult.check_key == check_key,
+            RunResult.judge_version.is_not(None),
+        )
+        .order_by(Run.finished_at.desc(), RunResult.created_at.desc(), RunResult.id.desc())
+        .limit(1)
+    )
 
 
 def kappa(tp: int, fp: int, fn: int, tn: int) -> float | None:
@@ -74,55 +95,80 @@ def kappa(tp: int, fp: int, fn: int, tn: int) -> float | None:
 def compute(
     db: Session, project: Project, *, check_key: str, judge_version: str, label_check: str
 ) -> dict[str, Any]:
-    labels = {
-        (lb.sample_key, lb.output_hash): lb
-        for lb in db.scalars(
-            select(Label).where(
-                Label.project_id == project.id,
-                Label.check_key == label_check,
-                Label.deleted_at.is_(None),
-            )
+    """Latest verdict per labelled (sample, output) — by the run's finish time, not ingest
+    time, so a backfilled older run never overrides a newer verdict — joined to the label."""
+    labelled = (
+        select(func.count())
+        .select_from(Label)
+        .where(
+            Label.project_id == project.id,
+            Label.check_key == label_check,
+            Label.deleted_at.is_(None),
         )
-    }
-    if not labels:
+    )
+    n_labels = db.scalar(labelled)
+    if not n_labels:
         raise Invalid(f"no human labels under check {label_check!r} in this project")
-    results = db.scalars(
-        select(RunResult)
+    if n_labels > MAX_PAIRS:
+        raise Invalid(f"{n_labels} labels under {label_check!r}; the limit is {MAX_PAIRS}")
+    latest = (
+        select(
+            RunResult.sample_key,
+            RunResult.output_hash,
+            RunResult.passed,
+            RunResult.score,
+            RunResult.judge_model,
+        )
         .join(Run, Run.id == RunResult.run_id)
         .where(
             Run.project_id == project.id,
             Run.deleted_at.is_(None),
             RunResult.check_key == check_key,
-            judge_version == _JV,
-            RunResult.sample_key.in_([k for k, _ in labels]),
+            RunResult.judge_version == judge_version,
+            RunResult.error.is_(None),  # an error is never a verdict
+            RunResult.skipped.is_(False),
         )
-        .order_by(RunResult.created_at.desc())
-        .limit(MAX_RESULTS_SCANNED)
+        .ext(distinct_on(RunResult.sample_key, RunResult.output_hash))
+        .order_by(
+            RunResult.sample_key,
+            RunResult.output_hash,
+            Run.finished_at.desc(),
+            RunResult.created_at.desc(),  # uuid ids are random: ingest time breaks ties
+            RunResult.id.desc(),
+        )
+        .subquery()
+    )
+    pairs = db.execute(
+        select(latest.c.passed, latest.c.score, latest.c.judge_model, Label.passed, Label.value)
+        .join(
+            Label,
+            (Label.sample_key == latest.c.sample_key) & (Label.output_hash == latest.c.output_hash),
+        )
+        .where(
+            Label.project_id == project.id,
+            Label.check_key == label_check,
+            Label.deleted_at.is_(None),
+        )
+        .execution_options(yield_per=1000)
     )
     tp = fp = fn = tn = 0
     abs_err = 0.0
-    model = None
-    seen: set[tuple[str, str]] = set()  # the latest verdict per (sample, output) counts once
-    for r in results:
-        key = (r.sample_key, output_hash(Output.model_validate(r.output)))
-        lb = labels.get(key)
-        if lb is None or key in seen:
-            continue
-        seen.add(key)
-        model = model or (r.raw or {}).get("model")
-        if r.passed and lb.passed:
+    model: str | None = None
+    for judge_passed, judge_value, judge_model, human_passed, human_value in pairs:
+        model = min(model, judge_model) if model and judge_model else (model or judge_model)
+        if judge_passed and human_passed:
             tp += 1
-        elif r.passed and not lb.passed:
+        elif judge_passed and not human_passed:
             fp += 1
-        elif not r.passed and lb.passed:
+        elif not judge_passed and human_passed:
             fn += 1
         else:
             tn += 1
-        abs_err += abs(r.score - lb.value)
+        abs_err += abs(judge_value - human_value)
     n = tp + fp + fn + tn
     if n == 0:
         raise Invalid(
-            f"no overlap: none of the {len(labels)} labelled outputs has a verdict from "
+            f"no overlap: none of the {n_labels} labelled outputs has a verdict from "
             f"{check_key}@{judge_version}"
         )
     return {
@@ -147,12 +193,14 @@ def request(
     label_check: str,
     created_by: User | None,
 ) -> Calibration:
-    """Queue a calibration (the latest judge version of the check when none is given)."""
+    """Queue a calibration (the latest judge version of the check when none is given).
+
+    A broker failure marks the row `failed` with the error instead of orphaning a `queued` row.
+    """
     if judge_version is None:
-        latest = next((j for j in judges(db, project) if j["check_key"] == check_key), None)
-        if latest is None:
+        judge_version = latest_version(db, project, check_key)
+        if judge_version is None:
             raise Invalid(f"no judge verdicts for check {check_key!r} in this project")
-        judge_version = latest["judge_version"]
     row = Calibration(
         project_id=project.id,
         check_key=check_key,
@@ -165,7 +213,12 @@ def request(
     db.refresh(row)
     from app.tasks import calibrate  # the task module imports this one
 
-    calibrate.delay(str(row.id))
+    try:
+        calibrate.delay(str(row.id))
+    except Exception as exc:
+        row.status, row.error = "failed", f"could not enqueue: {type(exc).__name__}: {exc}"[:1000]
+        row.finished_at = datetime.now(UTC)
+        db.commit()
     db.refresh(row)  # an eager (tests) or very fast worker may already have finished it
     return row
 
@@ -189,6 +242,8 @@ def run_job(db: Session, calibration_id: uuid.UUID) -> Calibration:
             label_check=row.label_check,
         )
     except Exception as exc:
+        db.rollback()  # a DB error leaves the transaction aborted; recover before writing
+        row = db.get(Calibration, calibration_id)
         row.status, row.error = "failed", f"{type(exc).__name__}: {str(exc)[:900]}"
         row.finished_at = datetime.now(UTC)
         db.commit()

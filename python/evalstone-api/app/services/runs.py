@@ -12,6 +12,8 @@ import uuid
 from typing import Any
 
 from evalstone._json import canonical
+from evalstone.checks.human import output_hash
+from evalstone.output import Output
 from evalstone.run import Comparison, Result, summarise
 from evalstone.run import Run as LibRun
 from evalstone.run import compare as lib_compare
@@ -22,6 +24,22 @@ from app.errors import Invalid, NotFound
 from app.models import Dataset, DatasetVersion, Project, Run, RunResult, User
 
 MAX_RESULTS_PER_RUN = 20_000
+
+
+def output_hash_of(output_json: dict[str, Any]) -> str:
+    """The library's hash of a stored output JSON — the key labels and tasks use."""
+    return output_hash(Output.model_validate(output_json))
+
+
+def _judge_stamp(raw: Any) -> tuple[str | None, str | None]:
+    if not isinstance(raw, dict):
+        return None, None
+    jv, model = raw.get("judge_version"), raw.get("model")
+    jv = str(jv)[:16] if isinstance(jv, str) and jv else None
+    model = str(model)[:200] if isinstance(model, str) and model else None
+    return jv, model
+
+
 MAX_RESULT_BYTES = 256 * 1024  # canonical JSON of one result (input, expected, output, score)
 # column widths the library does not bound; checked here so an over-long value is a 422
 _LIMITS = {"id": 64, "git_sha": 64, "trigger": 40, "suite": 200, "dataset": 200}
@@ -176,6 +194,9 @@ def ingest(
             input=r.input,
             expected=r.expected,
             output=r.output.model_dump(mode="json"),
+            output_hash=output_hash_of(r.output.model_dump(mode="json")),
+            judge_version=_judge_stamp(r.score.raw)[0],
+            judge_model=_judge_stamp(r.score.raw)[1],
             score=r.score.value,
             passed=r.score.passed,
             reason=r.score.reason,
