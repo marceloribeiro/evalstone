@@ -13,7 +13,7 @@ import re
 from typing import Any
 
 from evalstone._json import dumps, sha256
-from evalstone.checks._base import FunctionCheck
+from evalstone.checks._base import FunctionCheck, judge_model_for
 from evalstone.dataset import Sample
 from evalstone.output import Output
 from evalstone.providers import ChatMessage, ProviderError
@@ -134,8 +134,7 @@ def judge(
         providers = ctx.providers
         if providers is None:
             return Score.errored("judge: no providers configured (ctx.providers is None)")
-        # --judge-model > the project's per-check override (center) > the check's own model
-        chosen = ctx.judge_model or (ctx.extra.get("judge_models") or {}).get(key) or model
+        chosen = judge_model_for(ctx, key, model)
         try:
             resolved = "/".join(providers.split(chosen))
         except ProviderError as exc:

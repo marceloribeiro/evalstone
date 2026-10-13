@@ -151,3 +151,11 @@ def check(
 
 
 __all__ = ["CheckFn", "FunctionCheck", "Registry", "check", "registry"]
+
+
+def judge_model_for(ctx: Any, key: str, model: str | None) -> str | None:
+    """Which model a judge-style check uses: ``--judge-model`` (``ctx.judge_model``) beats the
+    attached project's per-check override (``ctx.extra["judge_models"][key]``) beats the
+    check's own ``model``. ``None`` falls through to the registry's default."""
+    overrides = (getattr(ctx, "extra", None) or {}).get("judge_models") or {}
+    return getattr(ctx, "judge_model", None) or overrides.get(key) or model

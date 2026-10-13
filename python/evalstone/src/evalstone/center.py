@@ -27,6 +27,7 @@ class CenterConfig(BaseModel):
     project: str  # the center project id (uuid)
     api_key_env: str = DEFAULT_KEY_ENV  # an ingest key (es_…) or a user token
     timeout: float = 120.0  # a judge call waits on the provider behind the proxy
+    cache_timeout: float = 10.0  # cache and label lookups: a slow center is a miss, fast
     push_runs: bool = True  # `evalstone run` pushes its report
     cache: bool = True  # judge verdicts read/written in the center
 
@@ -71,10 +72,11 @@ class CenterClient:
     @staticmethod
     def _detail(resp: httpx.Response) -> str:
         try:
-            detail = resp.json().get("detail")
+            body = resp.json()
         except ValueError:
-            detail = None
-        return str(detail) if detail else resp.text[:300]
+            body = None
+        detail = body.get("detail") if isinstance(body, dict) else body
+        return str(detail)[:300] if detail else resp.text[:300]
 
     def _json(self, method: str, path: str, **kwargs: Any) -> Any:
         resp = self._request(method, path, **kwargs)
@@ -112,7 +114,9 @@ class CenterClient:
         return ChatResponse.model_validate(data)
 
     def cache_get(self, key: str) -> Score | None:
-        resp = self._request("GET", self._p(f"/judge-cache/{key}"))
+        resp = self._request(
+            "GET", self._p(f"/judge-cache/{key}"), timeout=self.config.cache_timeout
+        )
         if resp.status_code == 404:
             return None
         if resp.status_code >= 400:
@@ -127,6 +131,7 @@ class CenterClient:
             "PUT",
             self._p(f"/judge-cache/{key}"),
             json={"score": score.model_dump(mode="json"), "judge_version": judge_version},
+            timeout=self.config.cache_timeout,
         )
 
     def label_lookup(
@@ -135,7 +140,9 @@ class CenterClient:
         params = {"sample_key": sample_id, "output_hash": output_hash}
         if check is not None:
             params["check"] = check
-        resp = self._request("GET", self._p("/labels/lookup"), params=params)
+        resp = self._request(
+            "GET", self._p("/labels/lookup"), params=params, timeout=self.config.cache_timeout
+        )
         if resp.status_code == 404:
             return None
         if resp.status_code >= 400:
@@ -220,8 +227,8 @@ class CenterCache:
             return hit
         try:
             score = self._client.cache_get(key)
-        except CenterError as exc:
-            self.errors.append(str(exc))
+        except Exception as exc:
+            self.errors.append(f"{type(exc).__name__}: {exc}")
             return None
         if score is not None:
             self._local.set(key, score)
@@ -231,8 +238,8 @@ class CenterCache:
         self._local.set(key, score)
         try:
             self._client.cache_set(key, score)
-        except CenterError as exc:
-            self.errors.append(str(exc))
+        except Exception as exc:
+            self.errors.append(f"{type(exc).__name__}: {exc}")
 
 
 __all__ = [

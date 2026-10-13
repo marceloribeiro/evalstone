@@ -16,6 +16,9 @@ Attach a project to a center.
   the default when attached; a file path still works).
 - `evalstone run` pushes its report to the center (`push_runs: false` to opt out); a
   failed push warns and leaves the exit code alone.
+- Prompt targets (the system under test) always use the local `providers:` + env keys,
+  even when attached — the center proxy is for judges only. The MCP server honours the
+  attach too.
 
 ## 0.1.1 — 2026-10-13
 

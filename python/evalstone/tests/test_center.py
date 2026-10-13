@@ -211,8 +211,133 @@ def test_cli_run_pushes_the_report(tmp_path, monkeypatch):
     assert body["suite"] == "ci" and body["results"]
     pushed.mock(return_value=httpx.Response(500, json={"detail": "boom"}))
     result = CliRunner().invoke(app, ["run", "ci"])
-    assert (
-        result.exit_code == 0 and "run not pushed" in result.output + result.stderr
-        if hasattr(result, "stderr")
-        else True
+    assert result.exit_code == 0  # a failed push never fails the run
+    assert "run not pushed" in result.output + getattr(result, "stderr", "")
+
+
+# --- regressions from the #33 review ---------------------------------------------------------
+
+
+@respx.mock
+def test_explicit_labels_center_in_yaml_reaches_the_center(tmp_path, monkeypatch):
+    monkeypatch.setenv("EVALSTONE_API_KEY", "es_test_key")
+    respx.get(f"{P}/judge-settings").mock(
+        return_value=httpx.Response(
+            200, json={"project_id": PROJECT, "default_model": None, "overrides": {}}
+        )
     )
+    lookup = respx.get(f"{P}/labels/lookup").mock(return_value=httpx.Response(404))
+    (tmp_path / "evalstone.yaml").write_text(
+        f"project: demo\ncenter:\n  url: {URL}\n  project: {PROJECT}\n"
+        "checks:\n  h:\n    type: human\n    labels: center\n"
+    )
+    cfg = Config.load(tmp_path)
+    score = cfg.check("h").evaluate(Sample(id="s", input="q"), Output(value="a"), cfg.context())
+    assert "in the center" in score.error and lookup.call_count == 1
+
+
+@respx.mock
+def test_mcp_session_honours_the_attach(tmp_path, monkeypatch):
+    from evalstone.mcp_server import Session
+
+    monkeypatch.setenv("EVALSTONE_API_KEY", "es_test_key")
+    respx.get(f"{P}/judge-settings").mock(
+        return_value=httpx.Response(
+            200, json={"project_id": PROJECT, "default_model": "j/m", "overrides": {}}
+        )
+    )
+    (tmp_path / "evalstone.yaml").write_text(
+        f"project: demo\ncenter:\n  url: {URL}\n  project: {PROJECT}\n"
+    )
+    session = Session(config_path=str(tmp_path / "evalstone.yaml"))
+    cfg = session.config()
+    ctx = session.context(cfg)
+    assert isinstance(ctx.providers, CenterProviders) and isinstance(ctx.cache, CenterCache)
+    assert ctx.extra["center_client"] is cfg.center_client()
+
+
+def test_cli_center_error_while_building_the_suite_is_a_clean_exit(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from evalstone.cli import app
+
+    monkeypatch.delenv("EVALSTONE_API_KEY", raising=False)
+    (tmp_path / "golden.jsonl").write_text('{"input": "hi"}\n')
+    (tmp_path / "evalstone.yaml").write_text(
+        f"project: demo\ncenter:\n  url: {URL}\n  project: {PROJECT}\n"
+        "datasets:\n  golden: golden.jsonl\n"
+        "checks:\n  j:\n    type: judge\n    rubric: ok?\n"
+        "suites:\n  ci:\n    dataset: golden\n"
+        "    target: {kind: prompt, model: openai/x, template: '{input}'}\n    checks: [j]\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["run", "ci"])
+    assert result.exit_code == 2 and "EVALSTONE_API_KEY" in result.output + getattr(
+        result, "stderr", ""
+    )
+    assert "Traceback" not in result.output
+
+
+@respx.mock
+def test_cache_treats_a_corrupt_row_and_a_non_object_error_as_misses(cfg):
+    key = "d" * 64
+    respx.get(f"{P}/judge-cache/{key}").mock(
+        return_value=httpx.Response(200, json={"score": {"value": 1.2, "passed": True}})  # invalid
+    )
+    cache = CenterCache(CenterClient(cfg))
+    assert cache.get(key) is None and "ValidationError" in cache.errors[0]
+    other = "e" * 64
+    respx.get(f"{P}/judge-cache/{other}").mock(
+        return_value=httpx.Response(504, json=["upstream timeout"])
+    )
+    assert cache.get(other) is None and "upstream timeout" in cache.errors[1]
+
+
+@respx.mock
+def test_pairwise_honours_the_center_override(cfg):
+    from evalstone.checks.comparison import pairwise
+
+    calls = respx.post(f"{P}/model/complete").mock(
+        return_value=_verdict(text='{"winner": "A", "reason": "clearer"}')
+    )
+    client = CenterClient(cfg)
+    ctx = Context(
+        providers=CenterProviders(client, default_model="judge/small"),
+        extra={"center_client": client, "judge_models": {"better": "other/big"}},
+    )
+    check = pairwise(
+        "better", "Which is clearer?", baseline={"s": "baseline answer"}, model="judge/small"
+    )
+    check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx)
+    assert json.loads(calls.calls[0].request.content)["model"] == "other/big"
+
+
+@respx.mock
+def test_prompt_targets_stay_local_when_attached(tmp_path, monkeypatch):
+    from evalstone.providers import Providers
+
+    monkeypatch.setenv("EVALSTONE_API_KEY", "es_test_key")
+    respx.get(f"{P}/judge-settings").mock(
+        return_value=httpx.Response(
+            200, json={"project_id": PROJECT, "default_model": None, "overrides": {}}
+        )
+    )
+    (tmp_path / "evalstone.yaml").write_text(
+        f"project: demo\ncenter:\n  url: {URL}\n  project: {PROJECT}\nproviders:\n  openai: {{}}\n"
+    )
+    cfg = Config.load(tmp_path)
+    target = cfg.target({"kind": "prompt", "model": "openai/x", "template": "{input}"})
+    assert isinstance(target.providers, Providers)  # the local registry, not the proxy
+    assert isinstance(cfg.provider_registry(), CenterProviders)  # judges: the proxy
+
+
+@respx.mock
+def test_cache_lookups_use_the_short_timeout_and_the_cli_warns(cfg):
+    key = "f" * 64
+    route = respx.get(f"{P}/judge-cache/{key}").mock(side_effect=httpx.ReadTimeout("slow"))
+    cache = CenterCache(CenterClient(cfg))
+    assert cache.get(key) is None
+    assert route.calls[0].request.extensions["timeout"]["read"] == cfg.cache_timeout
+    from evalstone.cli import _warn_cache_errors
+
+    _warn_cache_errors(Context(cache=cache))  # prints a warning; must not raise
