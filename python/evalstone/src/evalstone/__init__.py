@@ -21,7 +21,7 @@ from evalstone.target import (
     target,
 )
 
-__version__ = "0.1.0.dev1"
+__version__ = "0.1.0"
 
 __all__ = [
     "CallableTarget",
