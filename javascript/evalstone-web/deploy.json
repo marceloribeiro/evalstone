@@ -1,0 +1,8 @@
+{
+  "production": {
+    "server": "homemarket-web01",
+    "github": "https://github.com/marceloribeiro/evalstone.git",
+    "deploy_location": "/home/ubuntu/evalstone-web",
+    "deploy_branch": "main"
+  }
+}

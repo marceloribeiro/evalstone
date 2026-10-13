@@ -1,0 +1,30 @@
+import { request, type APIRequestContext } from "@playwright/test";
+
+/** Seed through the center API: every test gets its own user (no shared state). */
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8181";
+
+export type Seed = { email: string; password: string; token: string; api: APIRequestContext };
+
+export async function newUser(prefix = "web"): Promise<Seed> {
+  const api = await request.newContext({ baseURL: API_URL });
+  const email = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+  const password = "playwright-pass-1";
+  const res = await api.post("/auth/register", { data: { email, password, first_name: "Play", last_name: "Wright" } });
+  if (!res.ok()) throw new Error(`register failed: ${res.status()} ${await res.text()}`);
+  const { token } = (await res.json()) as { token: string };
+  return { email, password, token, api };
+}
+
+export async function authed(seed: Seed, method: "post" | "get" | "put" | "delete", path: string, data?: unknown) {
+  const res = await seed.api[method](path, { data, headers: { Authorization: `Bearer ${seed.token}` } });
+  if (!res.ok()) throw new Error(`${method.toUpperCase()} ${path} → ${res.status()} ${await res.text()}`);
+  return res.status() === 204 ? null : res.json();
+}
+
+export async function newOrganization(seed: Seed, name: string): Promise<{ id: string; name: string }> {
+  return authed(seed, "post", "/organizations", { name });
+}
+
+export async function newProject(seed: Seed, orgId: string, name: string): Promise<{ id: string; name: string }> {
+  return authed(seed, "post", `/organizations/${orgId}/projects`, { name });
+}

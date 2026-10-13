@@ -1,0 +1,18 @@
+[Unit]
+Description=app.evalstone.com — Evalstone center web (Next.js)
+After=network.target
+
+[Service]
+ExecStart=/home/ubuntu/.nvm/versions/node/v20.20.2/bin/node server.js
+Restart=always
+RestartSec=10
+User=ubuntu
+Group=ubuntu
+Environment=PATH=/home/ubuntu/.nvm/versions/node/v20.20.2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=NODE_ENV=production
+Environment=PORT=8182
+Environment=HOSTNAME=0.0.0.0
+WorkingDirectory=/home/ubuntu/evalstone-web/current
+
+[Install]
+WantedBy=multi-user.target
