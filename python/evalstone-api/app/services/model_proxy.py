@@ -9,10 +9,11 @@ returns the library's `ChatResponse`.
 
 from __future__ import annotations
 
-from typing import Any
+import time
 
 from evalstone._json import canonical
-from evalstone.providers import ChatMessage, ChatResponse, ProviderError
+from evalstone.providers import ChatMessage, ChatResponse
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,7 @@ from app.errors import DomainError, Invalid
 from app.models import ModelCall, Project, Provider, User
 from app.services import judge_settings as judge_svc
 from app.services import providers as provider_svc
+from app.services.judge_settings import split_model
 
 MAX_REQUEST_BYTES = 512 * 1024  # canonical JSON of system + messages
 MAX_OUTPUT_TOKENS = 4096  # verdicts are short; a target call is not what this proxy is for
@@ -31,15 +33,23 @@ class UpstreamError(DomainError):
     status = 502
 
 
+class Usage(BaseModel):
+    """Per-project totals over every metered call (its own endpoint; not paged)."""
+
+    calls: int
+    failed: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    unpriced_calls: int
+
+
 def resolve_model(
     db: Session, project: Project, *, model: str | None, check_key: str | None
 ) -> str:
     """`<provider>/<model>`: the explicit one, else the project's judge settings for the check."""
     if model:
-        name, sep, bare = model.partition("/")
-        if not sep or not name or not bare:
-            raise Invalid(f"model must be '<provider>/<model>', got {model!r}")
-        return model
+        return "/".join(split_model(model))
     if not check_key:
         raise Invalid("give a model or the check_key to resolve one from the judge settings")
     settings = judge_svc.get_or_default(db, project)
@@ -53,7 +63,7 @@ def resolve_model(
 
 
 def _provider_for(db: Session, project: Project, model: str) -> Provider:
-    name = model.partition("/")[0]
+    name, _ = split_model(model)
     p = provider_svc.get_by_name(db, project.organization_id, name)
     if p is None:
         raise Invalid(f"no provider named {name!r} in this organization")
@@ -68,36 +78,44 @@ def complete(
     model: str | None,
     check_key: str | None,
     system: str | None,
-    messages: list[dict[str, Any]],
+    messages: list[ChatMessage],
     max_tokens: int,
     temperature: float | None,
 ) -> ChatResponse:
-    if max_tokens > MAX_OUTPUT_TOKENS:
-        raise Invalid(f"max_tokens is capped at {MAX_OUTPUT_TOKENS} on the proxy")
+    """The upstream call runs with NO database transaction open.
+
+    The reads commit (and release the pooled connection) before the provider is dialled —
+    a slow judge must not pin a connection for its whole timeout — and the metering row is
+    written afterwards in its own short transaction. Anything the adapter raises after the
+    key was spent is metered as a failed call and surfaces as a 502.
+    """
     size = len(canonical({"system": system, "messages": messages}).encode())
     if size > MAX_REQUEST_BYTES:
         raise Invalid(f"request is {size} bytes; the limit is {MAX_REQUEST_BYTES}")
     resolved = resolve_model(db, project, model=model, check_key=check_key)
     provider = _provider_for(db, project, resolved)
-    registry = provider_svc.build_registry([provider])
-    request = {
-        "system": system,
-        "messages": [ChatMessage.model_validate(m) for m in messages],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
+    registry = provider_svc.build_registry([provider])  # decrypts the key now, in-process
     call = ModelCall(
         project_id=project.id,
         provider_name=provider.name,
-        model=resolved.partition("/")[2],
+        model=split_model(resolved)[1],
         check_key=check_key,
         ok=False,
         caller_user_id=caller.id if caller else None,
     )
+    db.commit()  # release the read transaction + connection before the slow part
+    request = {
+        "system": system,
+        "messages": list(messages),
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    started = time.perf_counter()
     try:
         resp = registry.complete(resolved, request)
-    except ProviderError as err:
-        call.error = str(err)[:1000]
+    except Exception as err:  # ProviderError, or a malformed-response crash after the spend
+        call.latency_ms = (time.perf_counter() - started) * 1000
+        call.error = f"{type(err).__name__}: {str(err)[:900]}"
         db.add(call)
         db.commit()
         raise UpstreamError(f"provider '{provider.name}' failed: {str(err)[:500]}") from err
@@ -105,7 +123,8 @@ def complete(
         registry.close()
     call.ok = True
     call.input_tokens, call.output_tokens = resp.input_tokens, resp.output_tokens
-    call.cost_usd, call.latency_ms = resp.cost_usd, resp.latency_ms
+    call.cost_usd = resp.cost_usd
+    call.latency_ms = resp.latency_ms or (time.perf_counter() - started) * 1000
     db.add(call)
     db.commit()
     return resp
@@ -124,7 +143,7 @@ def list_calls(
     return rows, total
 
 
-def usage(db: Session, project: Project) -> dict[str, Any]:
+def usage(db: Session, project: Project) -> Usage:
     row = db.execute(
         select(
             func.count(),
@@ -135,11 +154,11 @@ def usage(db: Session, project: Project) -> dict[str, Any]:
             func.count().filter(ModelCall.ok.is_(True), ModelCall.cost_usd.is_(None)),
         ).where(ModelCall.project_id == project.id)
     ).one()
-    return {
-        "calls": row[0],
-        "failed": row[1],
-        "input_tokens": int(row[2]),
-        "output_tokens": int(row[3]),
-        "cost_usd": float(row[4]),
-        "unpriced_calls": row[5],
-    }
+    return Usage(
+        calls=row[0],
+        failed=row[1],
+        input_tokens=int(row[2]),
+        output_tokens=int(row[3]),
+        cost_usd=float(row[4]),
+        unpriced_calls=row[5],
+    )
