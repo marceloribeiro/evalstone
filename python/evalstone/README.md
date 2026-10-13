@@ -36,6 +36,21 @@ Judges and prompt targets need a provider key in the environment
 OpenAI-compatible base URL such as OpenRouter or Ollama via `providers:`).
 Without one, judge results are **errors, never passes**, and the gate fails.
 
+## pytest
+
+```python
+from evalstone.pytest_plugin import suite
+
+
+@suite("nightly")  # runs the suite; a failing gate fails the test
+def test_support_bot(run):  # optional body sees the Run
+    assert run.summary.cost_usd < 1.0
+```
+
+Fixtures `evalstone_run` / `evalstone_gate` / `evalstone_config`; options
+`--evalstone-config`, `--evalstone-baseline`. The plugin registers itself when
+evalstone is installed; pytest is not a runtime dependency of the library.
+
 ## MCP server
 
 ```bash

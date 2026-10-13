@@ -2,6 +2,8 @@ import pytest
 
 from evalstone.checks import registry
 
+pytest_plugins = ["pytester"]
+
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
