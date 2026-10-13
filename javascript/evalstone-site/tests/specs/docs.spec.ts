@@ -71,7 +71,8 @@ test.describe('Guides and reference', () => {
     });
   }
 
-  test('the checks catalog lists every configurable type', async ({ page }) => {
+  // completeness against the library's FACTORIES is asserted by python/evalstone/tests/test_docs.py
+  test('the checks catalog renders rows from every check family', async ({ page }) => {
     const docs = new DocsPage(page);
     await docs.goto('/reference/checks');
     for (const type of ['json_schema', 'judge', 'rag.faithfulness', 'safety.no_pii', 'comparison.pairwise', 'trajectory.tool_called', 'human']) {

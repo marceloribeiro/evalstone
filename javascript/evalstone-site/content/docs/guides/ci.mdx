@@ -11,8 +11,10 @@ Pick the lightest one that fits. All three run the same suite and the same gate.
 evalstone gate nightly --baseline reports/main.json
 ```
 
-Exit 1 when the gate fails. `--baseline` enables `max_regression` against a
-saved report from `main`. Works in any CI.
+Exit 1 when the gate fails. `--baseline` supplies the run that a
+`max_regression:` threshold in the suite's gate compares against (a saved
+report from `main`, say); a gate without `max_regression` ignores the baseline
+and prints no regression line. Works in any CI.
 
 ## The pytest plugin
 
@@ -42,28 +44,27 @@ No `evalstone.yaml` → the test is skipped, not errored.
 ## The GitHub Action
 
 ```yaml
-# .github/workflows/evals.yml
-name: Evals
-on: { pull_request: {} }
+# .github/workflows/evals.yml (the minimum; every input is in the action's README)
 permissions: { contents: read, pull-requests: write }
-jobs:
-  evals:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: marceloribeiro/evalstone/action@main
-        with:
-          suite: nightly
-          working-directory: evals          # where evalstone.yaml lives
-          install: "evalstone[anthropic]"
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+steps:
+  - uses: actions/checkout@v4
+  - uses: marceloribeiro/evalstone/action@main
+    with:
+      suite: nightly
+      working-directory: evals          # where evalstone.yaml lives
+      install: "evalstone[anthropic] @ git+https://github.com/marceloribeiro/evalstone.git@main#subdirectory=python/evalstone"   # until the PyPI publish; then "evalstone[anthropic]"
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-The action installs evalstone, runs the suite, writes the report into the job
-summary, posts a PR comment (updated in place on every push) with the verdict,
-the per-check table and the failing samples, and fails the check when the gate
-does not pass. Inputs and outputs:
+The action installs evalstone (`install:` is a pip spec: a published name once
+it exists, a git URL as above, or a path inside a monorepo), runs the suite,
+writes the report into the job summary, posts a PR comment (updated in place on
+every push) with the verdict, the per-check table and the failing samples, and
+fails the check when the gate does not pass. The comment needs a token that can
+write to the pull request: on pull requests from forks the token is read-only,
+so the comment is skipped and the job summary is the report. Every input,
+output and default:
 [action/README.md](https://github.com/marceloribeiro/evalstone/blob/main/action/README.md).
 The comment is `evalstone show <report> --markdown`, so you can see it locally.
 

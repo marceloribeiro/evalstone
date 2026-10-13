@@ -30,13 +30,15 @@ A missing or null reference is an **error**.
 
 ## RAG (judge-backed; the sample input carries `question` and `context`)
 
-| Type | Grades |
-| --- | --- |
-| `rag.faithfulness` | every claim in the answer is supported by `context` |
-| `rag.context_relevance` | `context` can answer `question` (the answer is ignored) |
-| `rag.answer_relevance` | the answer addresses `question` (accuracy is ignored) |
+| Type | Reads | Grades |
+| --- | --- | --- |
+| `rag.faithfulness` | `context`, `model`, `threshold` | every claim in the answer is supported by the context |
+| `rag.context_relevance` | `question`, `context`, `model`, `threshold` | the context can answer the question (the answer is ignored) |
+| `rag.answer_relevance` | `question`, `model`, `threshold` | the answer addresses the question (accuracy is ignored) |
 
-Field names are configurable (`question:`, `context:`).
+`question:` and `context:` name the input fields; `threshold` is 0..1. These
+take only the keys listed — not the judge's `scale`, `pass_level` or
+`include_reference` — because each ships its own fixed rubric and scale.
 
 ## Safety (rule-based)
 
@@ -60,13 +62,17 @@ Both orders are judged by default to cancel position bias.
 
 | Type | Reads | Passes when |
 | --- | --- | --- |
-| `trajectory.tool_called` | `name`, `min_times`, `max_times`, `args` (Python predicate) | call count within bounds |
+| `trajectory.tool_called` | `name`, `min_times` (default 1), `max_times`, `args` (Python predicate) | call count within bounds — with the default an empty trajectory fails |
 | `trajectory.tool_order` | `before`, `after` | every `after` is preceded by a `before` |
 | `trajectory.max_steps` | `n` | at most `n` steps |
 | `trajectory.no_repeated_calls` | `max_repeats` | no identical (tool, args) call repeats — loop detection |
-| `trajectory.finished` | `path` (default `answer`) | a non-empty final answer exists |
+| `trajectory.finished` | `path` (default `answer`) | `output.value[path]` is non-empty (reads no steps; a missing answer is a plain fail) |
 
-No recorded trajectory at all is an **error**; an empty one passes.
+For the four step-reading checks, no recorded trajectory at all (no `steps`
+list on the output) is an **error**, so a broken recorder trips
+`max_error_rate`; an empty trajectory is judged like any other (it passes
+`tool_order`, `max_steps` and `no_repeated_calls`, and fails `tool_called`
+unless `min_times: 0`).
 
 ## Human
 

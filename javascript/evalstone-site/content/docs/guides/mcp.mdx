@@ -9,7 +9,8 @@ MCP server exposes a project's `evalstone.yaml` as tools over stdio.
 ## Setup
 
 ```bash
-pip install "evalstone[mcp]"
+pip install "evalstone[mcp]"                      # once published; today, from the repo:
+pip install "evalstone[mcp] @ git+https://github.com/marceloribeiro/evalstone.git@main#subdirectory=python/evalstone"
 cd your-project                                   # where evalstone.yaml lives
 claude mcp add evalstone -- evalstone mcp
 ```

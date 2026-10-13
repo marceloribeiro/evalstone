@@ -5,8 +5,9 @@ description: From nothing to a gated eval run in ten minutes, no model key requi
 
 <Callout type="info" title="Install">
   Until 0.1.0 is on PyPI, install from the repository:
-  `git clone https://github.com/marceloribeiro/evalstone && pip install -e evalstone/python/evalstone`.
-  Afterwards it is `pip install evalstone`.
+  `git clone https://github.com/marceloribeiro/evalstone && pip install -e "evalstone/python/evalstone[anthropic]"`
+  (the `[anthropic]` extra is what step 5's judge needs). Afterwards it is
+  `pip install "evalstone[anthropic]"`.
 </Callout>
 
 ## 1. Scaffold a project
@@ -16,7 +17,8 @@ evalstone init my-evals
 cd my-evals
 ```
 
-This writes four files and never overwrites anything that already exists:
+This writes five files. If any of them already exists the command refuses and
+writes nothing (exit 2), so an existing `evals/` package is never touched.
 
 | File | What |
 | --- | --- |
@@ -24,6 +26,7 @@ This writes four files and never overwrites anything that already exists:
 | `evals/golden.jsonl` | two sample questions with references |
 | `evals/outputs.jsonl` | recorded answers, so the first run needs no model |
 | `evals/checks.py` | a custom check (`no_apology`) registered with `@check` |
+| `evals/__init__.py` | makes `evals` importable (`imports: [evals.checks]` in the YAML) |
 
 ## 2. Run the suite
 
@@ -77,5 +80,5 @@ judges:
   default_model: anthropic/claude-haiku-5-5     # needs ANTHROPIC_API_KEY
 ```
 
-Without a key a judge is an **error, never a pass**, and the gate fails on
-error rate. That is deliberate.
+Without a key, or without the `[anthropic]` extra installed, a judge is an
+**error, never a pass**, and the gate fails on error rate. That is deliberate.
