@@ -1,12 +1,11 @@
 """Liveness and readiness (docs/API.md §1). No auth; `/health` never touches a dependency."""
 
-import redis
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.db import get_db
+from app.services import events
 
 router = APIRouter(tags=["health"])
 
@@ -31,18 +30,11 @@ def ready(db: Session = Depends(get_db)) -> dict[str, str]:
         checks["database"] = "down"
     finally:
         db.rollback()
-    client = redis.Redis.from_url(
-        get_settings().redis_url,
-        socket_connect_timeout=PROBE_TIMEOUT_S,
-        socket_timeout=PROBE_TIMEOUT_S,  # a stalled broker returns 503, not a hung probe
-    )
     try:
-        client.ping()
+        events.redis_client().ping()  # the pooled client: 1 s connect/read timeouts
         checks["redis"] = "ok"
     except Exception:
         checks["redis"] = "down"
-    finally:
-        client.close()
     if any(v != "ok" for v in checks.values()):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

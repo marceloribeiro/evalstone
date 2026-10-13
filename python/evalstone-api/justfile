@@ -78,6 +78,10 @@ workers:
 beat:
     {{venv}}/celery -A app.worker.celery_app beat --loglevel=info
 
+# write the OpenAPI schema to openapi.json (the committed, published copy; a test keeps it current)
+openapi:
+    {{venv}}/python -m app.openapi_export openapi.json
+
 # IPython console with `db`, models and tasks preloaded
 console:
     {{venv}}/ipython -i scripts/console.py

@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import Invalid, NotFound
 from app.models import Dataset, DatasetVersion, Project, Run, RunResult, User
+from app.services import events
 
 MAX_RESULTS_PER_RUN = 20_000
 
@@ -210,6 +211,15 @@ def ingest(
     )
     db.commit()
     db.refresh(row)
+    events.publish(
+        project.id,
+        "run.stored",
+        run_id=row.id,
+        client_run_id=row.client_run_id,
+        suite=row.suite,
+        pass_rate=row.pass_rate,
+        result_count=row.result_count,
+    )
     return row, True
 
 

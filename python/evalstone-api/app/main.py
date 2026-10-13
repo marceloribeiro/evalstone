@@ -24,6 +24,7 @@ from app.routers import (
     projects,
     providers,
     runs,
+    ws,
 )
 
 settings = get_settings()
@@ -56,6 +57,7 @@ app.include_router(catalog.router)
 app.include_router(label_queues.router)
 app.include_router(calibration.router)
 app.include_router(monitoring.router)
+app.include_router(ws.router)
 
 
 @app.exception_handler(DomainError)

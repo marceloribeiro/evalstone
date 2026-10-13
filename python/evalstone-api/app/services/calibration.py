@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import Invalid, NotFound
 from app.models import Calibration, Label, Project, Run, RunResult, User
+from app.services import events
 
 MAX_PAIRS = 50_000  # labelled outputs a calibration may cover; above it the job fails loudly
 
@@ -248,12 +249,31 @@ def run_job(db: Session, calibration_id: uuid.UUID) -> Calibration:
         row.finished_at = datetime.now(UTC)
         db.commit()
         db.refresh(row)
+        events.publish(
+            row.project_id,
+            "calibration.finished",
+            calibration_id=row.id,
+            status="failed",
+            check_key=row.check_key,
+            error=row.error,
+        )
         return row
     for k, v in stats.items():
         setattr(row, k, v)
     row.status, row.finished_at = "done", datetime.now(UTC)
     db.commit()
     db.refresh(row)
+    events.publish(
+        row.project_id,
+        "calibration.finished",
+        calibration_id=row.id,
+        status=row.status,
+        check_key=row.check_key,
+        judge_version=row.judge_version,
+        agreement=row.agreement,
+        kappa=row.kappa,
+        n=row.n,
+    )
     return row
 
 

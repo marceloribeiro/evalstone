@@ -16,8 +16,12 @@ def test_ready_reports_database_and_redis(client):
 
 
 def test_ready_is_503_and_names_the_dependency_when_redis_is_down(client, monkeypatch):
-    s = get_settings()
-    monkeypatch.setattr(s, "redis_url", "redis://localhost:1/7")  # nothing listens on port 1
+    import redis
+
+    from app.services import events
+
+    dead = redis.Redis.from_url("redis://localhost:1/7", socket_connect_timeout=0.2)  # port 1
+    monkeypatch.setattr(events, "redis_client", lambda: dead)
     r = client.get("/ready")
     assert r.status_code == 503
     assert r.json()["detail"] == {"status": "not_ready", "database": "ok", "redis": "down"}
@@ -46,21 +50,13 @@ def test_ready_is_503_when_the_database_is_down(client):
     assert r.json()["detail"]["database"] == "down"
 
 
-def test_ready_bounds_every_probe_and_closes_the_redis_client(client, monkeypatch):
+def test_ready_bounds_every_probe_with_the_pooled_client(client, monkeypatch):
     """A stalled dependency must turn into a 503, not a hung probe (review finding on #23)."""
-    seen: dict[str, object] = {}
+    from app.services import events
 
-    class FakeRedis:
-        def ping(self):
-            return True
-
-        def close(self):
-            seen["closed"] = True
-
-    def from_url(url, **kwargs):
-        seen["kwargs"] = kwargs
-        return FakeRedis()
-
+    pool = events.redis_client()
+    kw = pool.connection_pool.connection_kwargs
+    assert kw["socket_connect_timeout"] == 1 and kw["socket_timeout"] == 1
     statements: list[str] = []
 
     class RecordingSession:
@@ -68,21 +64,15 @@ def test_ready_bounds_every_probe_and_closes_the_redis_client(client, monkeypatc
             statements.append(str(stmt))
 
         def rollback(self):
-            seen["rolled_back"] = True
+            statements.append("ROLLBACK")
 
-    monkeypatch.setattr(health.redis.Redis, "from_url", staticmethod(from_url))
     client.app.dependency_overrides[get_db] = lambda: RecordingSession()
     try:
         assert client.get("/ready").status_code == 200
     finally:
         client.app.dependency_overrides.clear()
-    assert seen["kwargs"] == {
-        "socket_connect_timeout": health.PROBE_TIMEOUT_S,
-        "socket_timeout": health.PROBE_TIMEOUT_S,
-    }
-    assert seen["closed"] is True
     assert statements[0] == f"SET LOCAL statement_timeout = {health.PROBE_TIMEOUT_MS}"
-    assert seen["rolled_back"] is True  # SET LOCAL never leaks past the probe
+    assert statements[-1] == "ROLLBACK"  # SET LOCAL never leaks past the probe
 
 
 def test_docs_require_basic_auth(client):
