@@ -190,3 +190,44 @@ def test_markdown_report_has_verdict_table_gate_and_failures():
     assert run.markdown(title="Custom").startswith("### Custom")
     ok = make_suite().run(RecordedTarget(GOOD)).markdown()
     assert "no gate" in ok and "failing" not in ok
+
+
+def _run_with(reason: str, *, error: str | None = None, sample_id: str = "s1"):
+    from evalstone.run import Result, Run, summarise
+    from evalstone.score import Score
+
+    score = Score(value=0.0, passed=False, reason=reason, error=error)
+    r = Result(sample_id=sample_id, check_key="k", score=score, output=Output(value="x"), input="q")
+    return Run(
+        suite="s",
+        dataset="d",
+        dataset_hash="0" * 16,
+        target={"kind": "recorded"},
+        check_keys=["k"],
+        started_at=Run.now(),
+        finished_at=Run.now(),
+        results=[r],
+        summary=summarise([r], samples=1, checks=1, duration_ms=1.0),
+    )
+
+
+def test_markdown_cells_cannot_break_the_table():
+    md = _run_with("line one\nline | two\r\nthree", sample_id="a|b").markdown()
+    rows = [line for line in md.splitlines() if line.startswith("| `")]
+    assert rows[-1] == "| `a\\|b` | `k` | 0.00 | line one line \\| two three |"
+    assert "line two" not in md.splitlines()[0]
+    assert all(line.count("|") >= 2 for line in md.splitlines() if line.startswith("|"))
+
+
+def test_markdown_failures_zero_lists_none_and_negative_is_not_a_slice():
+    run = _run_with("why")
+    for n in (0, -1):
+        md = run.markdown(failures=n)
+        assert "<details><summary>1 failing" not in md and "1 failing result(s)" in md
+    assert "first 0" not in run.markdown(failures=0)
+
+
+def test_failure_lines_fall_back_to_the_error_text():
+    run = _run_with("", error="target: boom")
+    assert run.failure_lines()[-1] == "  error s1 · k · target: boom"
+    assert "⚠️ target: boom" in run.markdown()

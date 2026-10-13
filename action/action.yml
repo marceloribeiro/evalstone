@@ -26,21 +26,25 @@ inputs:
     required: false
     default: "3.12"
   baseline:
-    description: "A saved JSON report to gate regressions against (optional)"
+    description: "A saved JSON report to gate regressions against: absolute, or relative to working-directory (optional)"
     required: false
     default: ""
   report:
-    description: "Where to write the JSON report"
+    description: "Where to write the JSON report (relative to working-directory). Default: a file under the runner's temp dir, so the checkout stays clean; see the `report` output"
     required: false
-    default: "evalstone-report.json"
+    default: ""
   failures:
-    description: "How many failing results to show"
+    description: "How many failing results to show (0: none)"
     required: false
-    default: "20"
+    default: "10"
   comment:
-    description: "Post/update a PR comment with the report (needs github-token)"
+    description: "Post/update a PR comment with the report (needs github-token with pull-requests: write; skipped on pull requests from forks, whose token cannot comment)"
     required: false
     default: "true"
+  comment-id:
+    description: "Distinguishes comments when the same suite runs in several jobs (set it to a matrix value)"
+    required: false
+    default: ""
   github-token:
     description: "Token for the PR comment (defaults to github.token)"
     required: false
@@ -52,7 +56,7 @@ inputs:
 
 outputs:
   report:
-    description: "Path of the JSON report"
+    description: "Absolute path of the JSON report (usable as a later run's `baseline`)"
     value: ${{ steps.run.outputs.report }}
   passed:
     description: "'true' when the gate passed, 'false' when it failed, 'none' when the suite has no gate"
@@ -68,40 +72,59 @@ runs:
     - name: Install evalstone
       shell: bash
       working-directory: ${{ inputs.working-directory }}   # so a path spec is relative to it
-      run: python -m pip install --upgrade pip && pip install "${{ inputs.install }}"
+      env:
+        INSTALL: ${{ inputs.install }}
+      run: python -m pip install --upgrade pip && pip install "$INSTALL"
 
     - name: Run the suite
       id: run
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      # inputs reach the shell through the environment, never by interpolation
+      env:
+        SUITE: ${{ inputs.suite }}
+        CONFIG: ${{ inputs.config }}
+        BASELINE: ${{ inputs.baseline }}
+        REPORT: ${{ inputs.report }}
+        FAILURES: ${{ inputs.failures }}
       run: |
+        set -euo pipefail
+        REPORT="${REPORT:-$RUNNER_TEMP/evalstone-report.json}"
+        case "$REPORT" in /*) ;; *) REPORT="$PWD/$REPORT" ;; esac
+        mkdir -p "$(dirname "$REPORT")"
+        ARGS=(run "$SUITE" --config "$CONFIG" --report "$REPORT" --failures "$FAILURES")
+        if [ -n "$BASELINE" ]; then ARGS+=(--baseline "$BASELINE"); fi
         set +e
-        BASE=""
-        if [ -n "${{ inputs.baseline }}" ]; then BASE="--baseline ${{ inputs.baseline }}"; fi
-        evalstone run "${{ inputs.suite }}" --config "${{ inputs.config }}" \
-          --report "${{ inputs.report }}" --failures "${{ inputs.failures }}" $BASE
+        evalstone "${ARGS[@]}"
         STATUS=$?
         set -e
         test "$STATUS" -eq 0 || { echo "::error::evalstone run exited $STATUS"; exit "$STATUS"; }
-        PASSED=$(python -c "import json;v=json.load(open('${{ inputs.report }}'))['gate_passed'];print('none' if v is None else str(v).lower())")
-        echo "report=${{ inputs.working-directory }}/${{ inputs.report }}" >> "$GITHUB_OUTPUT"
+        PASSED=$(REPORT="$REPORT" python -c "import json, os; v = json.load(open(os.environ['REPORT']))['gate_passed']; print('none' if v is None else str(v).lower())")
+        COMMENT="$RUNNER_TEMP/evalstone-comment.md"
+        evalstone show "$REPORT" --markdown --failures "$FAILURES" > "$COMMENT"
+        cat "$COMMENT" >> "$GITHUB_STEP_SUMMARY"
+        echo "report=$REPORT" >> "$GITHUB_OUTPUT"
         echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
-        evalstone show "${{ inputs.report }}" --markdown --failures "${{ inputs.failures }}" > evalstone-comment.md
-        cat evalstone-comment.md >> "$GITHUB_STEP_SUMMARY"
+        echo "comment=$COMMENT" >> "$GITHUB_OUTPUT"
 
     - name: Comment on the pull request
-      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      # a fork's token is read-only: the comment step would 403 and fail a green run
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+      continue-on-error: true
       uses: actions/github-script@v7
+      env:
+        COMMENT_FILE: ${{ steps.run.outputs.comment }}
+        MARKER: "<!-- evalstone:${{ inputs.suite }}:${{ inputs.comment-id }} -->"
       with:
         github-token: ${{ inputs.github-token }}
         script: |
           const fs = require('fs');
-          const body = fs.readFileSync('${{ inputs.working-directory }}/evalstone-comment.md', 'utf8');
-          const marker = '<!-- evalstone:${{ inputs.suite }} -->';
+          const body = fs.readFileSync(process.env.COMMENT_FILE, 'utf8');
+          const marker = process.env.MARKER;
           const { owner, repo } = context.repo;
           const issue_number = context.payload.pull_request.number;
-          const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 });
-          const mine = comments.data.find(c => c.body && c.body.includes(marker));
+          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+          const mine = comments.find(c => c.body && c.body.includes(marker));
           const full = marker + '\n' + body;
           if (mine) {
             await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body: full });
@@ -112,4 +135,6 @@ runs:
     - name: Enforce the gate
       if: ${{ inputs.fail-on-gate == 'true' && steps.run.outputs.passed == 'false' }}
       shell: bash
-      run: echo "::error::evalstone gate failed for suite '${{ inputs.suite }}'"; exit 1
+      env:
+        SUITE: ${{ inputs.suite }}
+      run: echo "::error::evalstone gate failed for suite '$SUITE'"; exit 1

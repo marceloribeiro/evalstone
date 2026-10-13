@@ -125,6 +125,16 @@ def test_init_never_overwrites_and_quotes_the_project_name(in_dir):
     assert runner.invoke(app, ["run", "nightly", "--report", "r.json"]).exit_code == 0
 
 
+def test_show_markdown_default_matches_the_report_default(in_dir):
+    from evalstone.run import DEFAULT_FAILURES, Run
+
+    runner.invoke(app, ["init"])
+    runner.invoke(app, ["run", "nightly", "--report", "r.json"])
+    res = runner.invoke(app, ["show", "r.json", "--markdown"])
+    assert res.exit_code == 0
+    assert res.output.strip() == Run.from_json("r.json").markdown(failures=DEFAULT_FAILURES)
+
+
 def test_show_markdown(in_dir):
     runner.invoke(app, ["init"])
     runner.invoke(app, ["run", "nightly", "--report", "r.json"])
