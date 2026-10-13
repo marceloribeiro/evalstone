@@ -1,0 +1,70 @@
+---
+title: Evals in CI
+description: Three ways to make a pull request go red when quality drops.
+---
+
+Pick the lightest one that fits. All three run the same suite and the same gate.
+
+## The exit code
+
+```bash
+evalstone gate nightly --baseline reports/main.json
+```
+
+Exit 1 when the gate fails. `--baseline` enables `max_regression` against a
+saved report from `main`. Works in any CI.
+
+## The pytest plugin
+
+Installed with the library (no extra), registered automatically.
+
+```python
+# tests/test_evals.py
+from evalstone.pytest_plugin import suite
+
+@suite("nightly")                 # runs the suite; a failing gate fails the test
+def test_support_bot(run):        # optional: the body sees the Run
+    assert run.summary.cost_usd < 1.0
+```
+
+The failure message carries the gate lines and the first failing results, so
+the test output already answers "which sample broke". Fixtures `evalstone_run`
+and `evalstone_gate` do the same without the decorator; `--evalstone-config`
+and `--evalstone-baseline` are pytest options. No `evalstone.yaml` → the test
+is skipped, not errored.
+
+## The GitHub Action
+
+```yaml
+# .github/workflows/evals.yml
+name: Evals
+on: { pull_request: {} }
+permissions: { contents: read, pull-requests: write }
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: marceloribeiro/evalstone/action@main
+        with:
+          suite: nightly
+          working-directory: evals          # where evalstone.yaml lives
+          install: "evalstone[anthropic]"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+The action installs evalstone, runs the suite, writes the report into the job
+summary, posts a PR comment (updated in place on every push) with the verdict,
+the per-check table and the failing samples, and fails the check when the gate
+does not pass. Inputs and outputs:
+[action/README.md](https://github.com/marceloribeiro/evalstone/blob/main/action/README.md).
+The comment is `evalstone show <report> --markdown`, so you can see it locally.
+
+The Evalstone repository runs this action on its own pull requests against the
+`rag-bot` sample.
+
+## What to block on
+
+[Chapter 7](/docs/learn/gates-and-ci) in one line: block on deterministic and
+calibrated checks with a tolerance above your noise floor; report the rest.

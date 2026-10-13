@@ -1,0 +1,89 @@
+---
+title: Checks catalog
+description: Every built-in check, what it needs from the sample, and what it returns.
+---
+
+Every check returns a `Score`: `value` in 0..1, `passed`, a `reason`, cost and
+latency, and `error` when it could not score. **An error is never a pass.**
+In Python the same factories live under `evalstone.checks`; in YAML the
+`type:` is the name below.
+
+## Deterministic (free, repeatable)
+
+| Type | Reads | Passes when |
+| --- | --- | --- |
+| `exact` | `expected` (or `path:` into it), `case_sensitive`, `strip` | output equals the reference (text or JSON equality) |
+| `contains` | `expected.must_include` (or `path:` / `needles:`), `require_all`, `case_sensitive` | every (or any) needle appears; value = fraction found |
+| `regex` | `pattern`, `flags`, `must_match` | the pattern matches (or does not) |
+| `json_schema` | `schema` (JSON Schema dict — draft from `$schema` — or a pydantic model) | the output is valid JSON and conforms; malformed schemas fail at load |
+| `numeric_tolerance` | `expected` (or `path:`), `output_path`, `abs_tol`, `rel_tol` | the output number is within tolerance |
+| `length` | `max_chars`, `max_words`, `min_chars` | within limits |
+| `python` | (Python only) any `fn(sample, output[, ctx])` | whatever it returns (`Score`, `bool`, or 0..1) |
+
+A missing or null reference is an **error**.
+
+## LLM-as-judge
+
+| Type | Reads | Notes |
+| --- | --- | --- |
+| `judge` | `rubric`, `scale` (default 5), `pass_level` (default: second-highest level; the top level on a 1–2 scale) or `threshold` (0..1), `model`, `include_reference` (default false), `max_tokens` | value = (level−1)/(scale−1); verdicts cached by judge version + prompt, so unchanged outputs cost nothing on re-runs |
+
+## RAG (judge-backed; the sample input carries `question` and `context`)
+
+| Type | Grades |
+| --- | --- |
+| `rag.faithfulness` | every claim in the answer is supported by `context` |
+| `rag.context_relevance` | `context` can answer `question` (the answer is ignored) |
+| `rag.answer_relevance` | the answer addresses `question` (accuracy is ignored) |
+
+Field names are configurable (`question:`, `context:`).
+
+## Safety (rule-based)
+
+| Type | Reads | Passes when |
+| --- | --- | --- |
+| `safety.refusal` | `expected.should_refuse` (or `expected:` literal) | the output refuses exactly when it should |
+| `safety.no_pii` | `kinds` ⊆ email, phone, card (Luhn-valid), ssn, ipv4 | none found |
+| `safety.forbidden` | `phrases`, `case_sensitive` | none of the phrases appear |
+
+Heuristics, not a DLP engine; keep safety checks in their own suite.
+
+## Pairwise comparison
+
+| Type | Reads | Value |
+| --- | --- | --- |
+| `comparison.pairwise` | `rubric`, `baseline` (a target spec or `{sample_id: output}`), `model`, `both_orders` (default true) | mean over judged orders of 1 (candidate preferred) / 0.5 (tie) / 0; passes at 0.5 |
+
+Both orders are judged by default to cancel position bias.
+
+## Agent trajectory (deterministic; `output.value["steps"]` = `[{"tool", "args"}, …]`)
+
+| Type | Reads | Passes when |
+| --- | --- | --- |
+| `trajectory.tool_called` | `name`, `min_times`, `max_times`, `args` (Python predicate) | call count within bounds |
+| `trajectory.tool_order` | `before`, `after` | every `after` is preceded by a `before` |
+| `trajectory.max_steps` | `n` | at most `n` steps |
+| `trajectory.no_repeated_calls` | `max_repeats` | no identical (tool, args) call repeats — loop detection |
+| `trajectory.finished` | `path` (default `answer`) | a non-empty final answer exists |
+
+No recorded trajectory at all is an **error**; an empty one passes.
+
+## Human
+
+| Type | Reads | Passes when |
+| --- | --- | --- |
+| `human` | `labels` (JSONL from `evalstone label`), `check` | a label exists for this sample **and** this exact output, and it passed |
+
+## Your own
+
+```python
+from evalstone import check
+
+@check("no_apology")
+def no_apology(sample, output):
+    return "sorry" not in output.text.lower()
+```
+
+List the module under `imports:` and use the key in a suite. Re-importing the
+module replaces the check; a *different* function under the same key is a
+duplicate error.

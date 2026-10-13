@@ -1,0 +1,81 @@
+---
+title: Quickstart
+description: From nothing to a gated eval run in ten minutes, no model key required.
+---
+
+<Callout type="info" title="Install">
+  Until 0.1.0 is on PyPI, install from the repository:
+  `git clone https://github.com/marceloribeiro/evalstone && pip install -e evalstone/python/evalstone`.
+  Afterwards it is `pip install evalstone`.
+</Callout>
+
+## 1. Scaffold a project
+
+```bash
+evalstone init my-evals
+cd my-evals
+```
+
+This writes four files and never overwrites anything that already exists:
+
+| File | What |
+| --- | --- |
+| `evalstone.yaml` | datasets, checks, suites, gate |
+| `evals/golden.jsonl` | two sample questions with references |
+| `evals/outputs.jsonl` | recorded answers, so the first run needs no model |
+| `evals/checks.py` | a custom check (`no_apology`) registered with `@check` |
+
+## 2. Run the suite
+
+```bash
+evalstone run nightly
+```
+
+You get a per-check table, the failing results with reasons, the gate verdict,
+and `evalstone-report.json`. Break a recorded answer in `evals/outputs.jsonl`
+and run again: the gate fails and the report names the sample.
+
+## 3. Point it at your own feature
+
+Replace the `recorded` target with the thing you ship:
+
+```yaml
+suites:
+  nightly:
+    dataset: golden
+    target: { kind: callable, fn: "myapp.bot:answer" }   # or http / prompt
+    checks: [must_include, short, no_apology]
+    gate: { min_pass_rate: 0.9 }
+```
+
+`callable` calls your Python function with the sample input; `http` POSTs it to
+an endpoint; `prompt` runs a template against a model. See the
+[config reference](/docs/reference/config).
+
+## 4. Gate it
+
+```bash
+evalstone gate nightly      # exit 1 when the gate fails
+```
+
+Put that in CI, or use the [pytest plugin or the GitHub Action](/docs/guides/ci).
+
+## 5. Add a judge
+
+Deterministic checks are the floor. For quality you add an LLM judge with a
+rubric (read [chapter 6](/docs/learn/llm-as-judge) first):
+
+```yaml
+checks:
+  helpful:
+    type: judge
+    rubric: |
+      The answer must directly address the question using the policy and state
+      the concrete rule (numbers, time windows, conditions).
+    scale: 5
+judges:
+  default_model: anthropic/claude-haiku-5-5     # needs ANTHROPIC_API_KEY
+```
+
+Without a key a judge is an **error, never a pass**, and the gate fails on
+error rate. That is deliberate.

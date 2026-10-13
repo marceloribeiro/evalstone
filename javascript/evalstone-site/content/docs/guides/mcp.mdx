@@ -1,0 +1,40 @@
+---
+title: Evals from your coding agent
+description: The MCP server lets Claude Code, Cursor or any MCP client run your suite before it says it is done.
+---
+
+If an agent is editing your prompt, it should run your evals. The Evalstone
+MCP server exposes a project's `evalstone.yaml` as tools over stdio.
+
+## Setup
+
+```bash
+pip install "evalstone[mcp]"
+cd your-project                                   # where evalstone.yaml lives
+claude mcp add evalstone -- evalstone mcp
+```
+
+Other clients: run `evalstone mcp` as a stdio server from the project directory.
+
+## Tools
+
+| Tool | What it does |
+| --- | --- |
+| `list_suites` | project, datasets, checks (configured and `@check`-registered), suites with their gates |
+| `run_suite(suite, report?, baseline?, failures?)` | runs the suite; returns summary, per-check rates, gate verdict and the failing results with reasons; writes the JSON report |
+| `judge_output(check, output, input?, expected?)` | scores one answer with any configured check — a judge, a schema check, a safety rule |
+| `record_sample(dataset, input, expected?, tags?, id?)` | appends a case to a dataset JSONL (`source: harvested`); duplicates are refused |
+| `compare_runs(a, b)` | regressions, improvements and metric deltas between two reports |
+| `get_run(report, failures?)` | reads a saved report |
+
+Errors come back as `{"error": …}` results the agent can read, never as protocol
+failures. The YAML is reloaded on every call, so editing a check or a dataset
+takes effect without restarting the server.
+
+## A typical loop
+
+1. `list_suites` — what exists.
+2. `run_suite("nightly")` — 87.5%, gate failed, five failures listed.
+3. The agent edits the prompt or the retriever.
+4. `run_suite("nightly", report="b.json")` → `compare_runs("evalstone-report.json", "b.json")`.
+5. It reports the diff to you. The gate stays yours.

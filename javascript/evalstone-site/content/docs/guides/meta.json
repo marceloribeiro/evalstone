@@ -1,0 +1,5 @@
+{
+  "title": "Guides",
+  "description": "Doing things with Evalstone",
+  "pages": ["quickstart", "ci", "mcp", "labeling"]
+}
