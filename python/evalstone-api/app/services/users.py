@@ -5,12 +5,15 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.errors import Conflict, Unauthorized
-from app.models import OrganizationInvitation, OrganizationMember, User
+from app.models import OrganizationInvitation, OrganizationMember, Role, User
 from app.security import hash_password, verify_password
+
+# verified against when the email is unknown, so a miss costs the same as a wrong password
+_DUMMY_HASH = hash_password("not-a-real-password")
 
 
 def normalize_email(email: str) -> str:
@@ -18,10 +21,9 @@ def normalize_email(email: str) -> str:
 
 
 def get_user_by_email(db: Session, email: str) -> User | None:
+    # emails are stored normalised, so an equality hits ix_users_email (lower() would not)
     return db.scalar(
-        select(User).where(
-            func.lower(User.email) == normalize_email(email), User.deleted_at.is_(None)
-        )
+        select(User).where(User.email == normalize_email(email), User.deleted_at.is_(None))
     )
 
 
@@ -54,22 +56,44 @@ def _accept_pending_invitations(db: Session, user: User) -> int:
     """ORGANIZATION_BASED rule: a new user joins every org that invited their email."""
     pending = db.scalars(
         select(OrganizationInvitation).where(
-            func.lower(OrganizationInvitation.email) == user.email,
+            OrganizationInvitation.email == user.email,
             OrganizationInvitation.accepted_at.is_(None),
             OrganizationInvitation.deleted_at.is_(None),
         )
     ).all()
     now = datetime.now(UTC)
     for inv in pending:
-        db.add(
-            OrganizationMember(organization_id=inv.organization_id, user_id=user.id, role=inv.role)
+        add_or_revive_member(
+            db, organization_id=inv.organization_id, user_id=user.id, role=inv.role
         )
         inv.accepted_at = now
     return len(pending)
 
 
+def add_or_revive_member(
+    db: Session, *, organization_id: uuid.UUID, user_id: uuid.UUID, role: Role
+) -> OrganizationMember:
+    """Membership rows are soft-deleted and (org, user) is unique: a returning user is revived."""
+    existing = db.scalar(
+        select(OrganizationMember).where(
+            OrganizationMember.organization_id == organization_id,
+            OrganizationMember.user_id == user_id,
+        )
+    )
+    if existing is None:
+        existing = OrganizationMember(organization_id=organization_id, user_id=user_id, role=role)
+        db.add(existing)
+    else:
+        existing.deleted_at = None
+        existing.role = role
+    return existing
+
+
 def authenticate(db: Session, *, email: str, password: str) -> User:
     user = get_user_by_email(db, email)
-    if user is None or not verify_password(password, user.password_hash):
+    if user is None:
+        verify_password(password, _DUMMY_HASH)  # no timing oracle for account enumeration
+        raise Unauthorized("invalid email or password")
+    if not verify_password(password, user.password_hash):
         raise Unauthorized("invalid email or password")
     return user

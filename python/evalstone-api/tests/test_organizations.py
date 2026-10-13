@@ -156,10 +156,10 @@ def test_only_owners_touch_ownership(client, org, register):
         client.patch(
             f"{base}/{ids['other@acme.example.com']}", json={"role": "owner"}, headers=admin_h
         ).status_code
-        == 422
+        == 403
     )
     assert (
-        client.delete(f"{base}/{ids['owner@acme.example.com']}", headers=admin_h).status_code == 422
+        client.delete(f"{base}/{ids['owner@acme.example.com']}", headers=admin_h).status_code == 403
     )
     # but can remove a member
     assert (
@@ -192,3 +192,53 @@ def test_service_guards_last_owner(db):
     assert m.role == Role.OWNER
     with pytest.raises(Invalid):
         org_service.remove_member(db, actor_role=Role.OWNER, member=m)
+
+
+def test_removed_member_can_be_reinvited(client, org, register):
+    """Membership is soft-deleted and (org, user) is unique: re-inviting revives the row."""
+    back_h, _ = register("back@acme.example.com")
+    inv_url = f"/organizations/{org['id']}/invitations"
+    client.post(inv_url, json={"email": "back@acme.example.com"}, headers=org["headers"])
+    mid = next(
+        m["id"] for m in _members(client, org) if m["user"]["email"] == "back@acme.example.com"
+    )
+    assert (
+        client.delete(
+            f"/organizations/{org['id']}/members/{mid}", headers=org["headers"]
+        ).status_code
+        == 204
+    )
+    assert client.get(f"/organizations/{org['id']}", headers=back_h).status_code == 404
+    r = client.post(
+        inv_url, json={"email": "back@acme.example.com", "role": "admin"}, headers=org["headers"]
+    )
+    assert r.status_code == 201, r.text
+    assert client.get(f"/organizations/{org['id']}", headers=back_h).status_code == 200
+    roles = {m["user"]["email"]: m["role"] for m in _members(client, org)}
+    assert roles["back@acme.example.com"] == "admin" and len(roles) == 2
+
+
+def test_deleting_an_org_retires_projects_and_revokes_ingest_keys(client, project):
+    org = project["org"]
+    secret = client.post(
+        f"/projects/{project['id']}/ingest-keys", json={"name": "ci"}, headers=org["headers"]
+    ).json()["key"]
+    assert (
+        client.get("/ingest/whoami", headers={"Authorization": f"Bearer {secret}"}).status_code
+        == 200
+    )
+    assert client.delete(f"/organizations/{org['id']}", headers=org["headers"]).status_code == 204
+    assert (
+        client.get("/ingest/whoami", headers={"Authorization": f"Bearer {secret}"}).status_code
+        == 401
+    )
+    assert client.get(f"/projects/{project['id']}", headers=org["headers"]).status_code == 404
+
+
+def test_invitation_status_is_computed_from_accepted_at(client, org):
+    r = client.post(
+        f"/organizations/{org['id']}/invitations",
+        json={"email": "c@acme.example.com"},
+        headers=org["headers"],
+    ).json()
+    assert r["status"] == "pending" and r["accepted_at"] is None

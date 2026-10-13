@@ -91,7 +91,7 @@ def remove_member(
 def list_invitations(
     ctx: MemberContext = Depends(require(Role.ADMIN)), db: Session = Depends(get_db)
 ):
-    return [InvitationOut.of(i) for i in svc.list_invitations(db, ctx.organization)]
+    return svc.list_invitations(db, ctx.organization)
 
 
 @router.post(
@@ -104,8 +104,7 @@ def invite(
     ctx: MemberContext = Depends(require(Role.ADMIN)),
     db: Session = Depends(get_db),
 ):
-    inv = svc.invite(db, org=ctx.organization, invited_by=ctx.user, **body.model_dump())
-    return InvitationOut.of(inv)
+    return svc.invite(db, org=ctx.organization, invited_by=ctx.user, **body.model_dump())
 
 
 @router.delete(

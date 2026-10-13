@@ -6,11 +6,20 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
+from sqlalchemy import update as sql_update
 from sqlalchemy.orm import Session
 
-from app.errors import Conflict, Invalid, NotFound
-from app.models import Organization, OrganizationInvitation, OrganizationMember, Role, User
-from app.services.users import get_user_by_email, normalize_email
+from app.errors import Conflict, Forbidden, Invalid, NotFound
+from app.models import (
+    IngestKey,
+    Organization,
+    OrganizationInvitation,
+    OrganizationMember,
+    Project,
+    Role,
+    User,
+)
+from app.services.users import add_or_revive_member, get_user_by_email, normalize_email
 
 
 def list_for_user(db: Session, user: User) -> list[Organization]:
@@ -40,7 +49,7 @@ def create(db: Session, *, owner: User, name: str, website_url: str | None = Non
     org = Organization(name=name, website_url=website_url)
     db.add(org)
     db.flush()
-    db.add(OrganizationMember(organization_id=org.id, user_id=owner.id, role=Role.OWNER))
+    add_or_revive_member(db, organization_id=org.id, user_id=owner.id, role=Role.OWNER)
     db.commit()
     db.refresh(org)
     return org
@@ -55,7 +64,22 @@ def update(db: Session, org: Organization, **fields) -> Organization:
 
 
 def soft_delete(db: Session, org: Organization) -> None:
-    org.deleted_at = datetime.now(UTC)
+    """Deleting an org retires its projects and revokes their ingest keys, one transaction."""
+    now = datetime.now(UTC)
+    org.deleted_at = now
+    db.execute(
+        sql_update(Project)
+        .where(Project.organization_id == org.id, Project.deleted_at.is_(None))
+        .values(deleted_at=now)
+    )
+    db.execute(
+        sql_update(IngestKey)
+        .where(
+            IngestKey.project_id.in_(select(Project.id).where(Project.organization_id == org.id)),
+            IngestKey.revoked_at.is_(None),
+        )
+        .values(revoked_at=now)
+    )
     db.commit()
 
 
@@ -112,7 +136,7 @@ def set_role(
 ) -> OrganizationMember:
     """Admins manage members; only owners grant or take away ownership."""
     if (role == Role.OWNER or member.role == Role.OWNER) and actor_role != Role.OWNER:
-        raise Invalid("only an owner can change ownership")
+        raise Forbidden("only an owner can change ownership")
     if role != Role.OWNER:
         _guard_last_owner(db, member)
     member.role = role
@@ -123,7 +147,7 @@ def set_role(
 
 def remove_member(db: Session, *, actor_role: Role, member: OrganizationMember) -> None:
     if member.role == Role.OWNER and actor_role != Role.OWNER:
-        raise Invalid("only an owner can remove an owner")
+        raise Forbidden("only an owner can remove an owner")
     _guard_last_owner(db, member)
     member.deleted_at = datetime.now(UTC)
     db.commit()
@@ -158,7 +182,7 @@ def invite(
     open_invite = db.scalar(
         select(OrganizationInvitation).where(
             OrganizationInvitation.organization_id == org.id,
-            func.lower(OrganizationInvitation.email) == email,
+            OrganizationInvitation.email == email,
             OrganizationInvitation.accepted_at.is_(None),
             OrganizationInvitation.deleted_at.is_(None),
         )
@@ -170,7 +194,7 @@ def invite(
     )
     db.add(inv)
     if existing is not None:
-        db.add(OrganizationMember(organization_id=org.id, user_id=existing.id, role=role))
+        add_or_revive_member(db, organization_id=org.id, user_id=existing.id, role=role)
         inv.accepted_at = datetime.now(UTC)
     db.commit()
     db.refresh(inv)

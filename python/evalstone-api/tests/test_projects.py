@@ -121,3 +121,38 @@ def test_service_stores_only_the_hash(db, project):
     assert secret not in (key.key_hash, key.prefix) and len(key.key_hash) == 64
     assert project_service.resolve_ingest_key(db, secret).id == p.id
     assert project_service.resolve_ingest_key(db, "es_other") is None
+
+
+def test_last_used_at_is_stamped_at_most_once_per_minute(db, project, monkeypatch):
+    from uuid import UUID
+
+    from app.services import users as user_service
+
+    p = project_service.get_project(db, UUID(project["id"]))
+    u = user_service.get_user_by_email(db, "owner@acme.example.com")
+    key, secret = project_service.create_ingest_key(db, project=p, created_by=u, name="hot")
+    commits: list[int] = []
+    real_commit = db.commit
+    monkeypatch.setattr(db, "commit", lambda: (commits.append(1), real_commit()))
+    assert project_service.resolve_ingest_key(db, secret) is not None
+    first = key.last_used_at
+    assert first is not None and commits == [1]
+    assert project_service.resolve_ingest_key(db, secret) is not None
+    assert key.last_used_at == first and commits == [1]  # the hot path did not write again
+
+
+def test_concurrent_duplicate_insert_is_a_409_not_a_500(client, project, db, monkeypatch):
+    """The slug pre-check cannot see a concurrent insert; the IntegrityError handler can (#24)."""
+    from uuid import UUID
+
+    from app.models import Project
+
+    p = project_service.get_project(db, UUID(project["id"]))
+    monkeypatch.setattr(project_service, "_slug_taken", lambda *a, **k: False)  # the race
+    r = client.post(
+        f"/organizations/{p.organization_id}/projects",
+        json={"name": p.name},
+        headers=project["headers"],
+    )
+    assert r.status_code == 409, r.text
+    assert db.query(Project).filter(Project.organization_id == p.organization_id).count() == 1
