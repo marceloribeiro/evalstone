@@ -6,18 +6,19 @@ Engineering-focused snapshot. Not a product commitment.
 
 - **Site + learning center** (`javascript/evalstone-site`): landing page and the
   "Evals 101" course on evalstone.com.
+- **Library 0.1.0** (`python/evalstone`): datasets, deterministic / judge / RAG /
+  safety / pairwise / trajectory checks, targets, suites, runs, gates, CLI,
+  provider adapters, `samples/rag-bot`. Shipped as PRs #1–#7. **PyPI publish
+  pending** the trusted-publisher setup (`.github/workflows/release.yml`).
 
 ## Next (in order)
 
-1. **Library core** — datasets, deterministic checks, targets, suites, runs,
-   gates; judge adapters (OpenAI-compatible, Anthropic, Gemini); RAG, safety,
-   pairwise and agent-trajectory checks; CLI; PyPI `0.1.0`.
-2. **Integrations** — MCP server, pytest plugin, GitHub Action, terminal labeling.
-3. **Center API** — orgs, projects, datasets + versions (pgvector dedup), run
+1. **Integrations** — MCP server, pytest plugin, GitHub Action, terminal labeling.
+2. **Center API** — orgs, projects, datasets + versions (pgvector dedup), run
    history, catalog, labeling queues, judge calibration, trace ingest + monitors +
    alerts, WebSocket; `docker-compose.yml` for self-hosters.
-4. **Center web** — runs, datasets, labeling, judges, monitors.
-5. **Hosted demo** — api.evalstone.com + app.evalstone.com.
+3. **Center web** — runs, datasets, labeling, judges, monitors.
+4. **Hosted demo** — api.evalstone.com + app.evalstone.com.
 
 ## Deferred (tracked, honored)
 
