@@ -61,6 +61,7 @@ tests/
 | Ingest | `GET /ingest/whoami` | `Authorization: Bearer es_…` |
 | Providers | `GET,POST /organizations/{id}/providers` · `GET,PATCH,DELETE …/providers/{pid}` · `POST …/providers/{pid}/test` | members read (masked), admin+ write. Keys are Fernet-encrypted with `PROVIDER_CREDS_KEY`, write-only (`has_api_key` + `key_last4`), decrypted only in-process to make a call. `base_url` passes an SSRF guard (`PROVIDER_ALLOW_PRIVATE_URLS` for a local gateway) |
 | Judge settings | `GET,PUT /projects/{id}/judge-settings` | default `<provider>/<model>` + per-check overrides; providers must exist in the org |
+| Datasets | `GET,POST /projects/{id}/datasets` · `GET,PATCH,DELETE …/datasets/{did}` · `GET,POST …/datasets/{did}/versions` · `GET …/versions/{n}` · `GET …/versions/{n}/samples?offset&limit` | members or the project's `es_…` key read and push; admin+ edits/deletes. A version is an immutable snapshot whose `content_hash` equals the library's `Dataset.content_hash`; pushing unchanged content returns the latest version (200). Samples are stored once per project by content |
 | Health | `GET /health` · `GET /ready` · `GET /docs` (basic auth) | — |
 
 Outsiders get `404`, not `403`, for organizations and projects they do not belong to.
