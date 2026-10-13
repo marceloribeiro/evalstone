@@ -26,7 +26,7 @@ suite = es.Suite(
     dataset=ds,
     checks=[
         es.checks.json_schema(schema=Answer),
-        es.checks.contains(field="expected.must_include"),
+        es.checks.contains(path="must_include"),
         es.checks.judge("helpfulness", rubric=RUBRIC, scale=5,
                         model="anthropic/claude-haiku-5-5"),
         es.checks.rag.faithfulness(),
