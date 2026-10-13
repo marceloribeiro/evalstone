@@ -12,7 +12,11 @@ function read(key: string): boolean {
   }
 }
 
-/** A boolean persisted in localStorage, read via useSyncExternalStore (no setState-in-effect, SSR-safe). */
+/**
+ * A boolean persisted in localStorage, read via useSyncExternalStore (no setState-in-effect, SSR-safe).
+ * The server snapshot (`false`) is only used while hydrating; the shell that uses this hook mounts after
+ * the auth check resolves on the client, so the persisted value is the first one painted.
+ */
 export function useLocalStorageFlag(key: string): [boolean, (next: boolean) => void] {
   const subscribe = useCallback((cb: () => void) => {
     window.addEventListener("storage", cb);

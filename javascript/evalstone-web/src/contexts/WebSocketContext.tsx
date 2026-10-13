@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { api, wsUrl } from "@/lib/api";
+import { api, ApiError, wsUrl } from "@/lib/api";
 import type { LiveEvent } from "@/lib/types";
 
 /**
@@ -46,15 +46,23 @@ export function WebSocketProvider({ projectId, children }: { projectId: string; 
     const connect = async () => {
       if (closed) return;
       setStatus("connecting");
+      let ticket: string;
       try {
-        const { ticket } = await api<{ ticket: string }>(`/projects/${projectId}/ws-ticket`, { method: "POST" });
-        const url = new URL(wsUrl(`/ws/projects/${projectId}`));
-        url.searchParams.set("ticket", ticket);
-        socket = new WebSocket(url.toString());
-      } catch {
+        ({ ticket } = await api<{ ticket: string }>(`/projects/${projectId}/ws-ticket`, { method: "POST" }));
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          // not (or no longer) allowed here: retrying every 30 s would only hammer the API
+          setStatus("closed");
+          return;
+        }
         schedule();
         return;
       }
+      // the effect may have been cleaned up (project switch, unmount) while the ticket was in flight
+      if (closed) return;
+      const url = new URL(wsUrl(`/ws/projects/${projectId}`));
+      url.searchParams.set("ticket", ticket);
+      socket = new WebSocket(url.toString());
       socket.onopen = () => {
         attempt = 0;
         setStatus("open");

@@ -24,6 +24,8 @@ export function errorMessage(err: unknown): string {
 }
 
 const TOKEN_KEY = "evalstone.token";
+/** Fired on window when a request made with the stored token came back 401: the session is over. */
+export const UNAUTHORIZED_EVENT = "evalstone:unauthorized";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -69,9 +71,28 @@ export async function api<T = unknown>(path: string, opts: Options = {}): Promis
   const res = await fetch(`${API_URL}${path}${qs}`, { method: opts.method ?? "GET", headers, body });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new ApiError(res.status, data?.detail ?? data);
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // an nginx 502/504 page, a proxy timeout: keep the status, show the body
+    if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText || "error"}`.trim());
+    throw new ApiError(res.status, "the API returned something that is not JSON");
+  }
+  if (!res.ok) {
+    if (res.status === 401 && opts.token === undefined && token) {
+      // the persisted session is no longer accepted (expired / revoked): drop it once, tell the app
+      setToken(null);
+      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    }
+    const detail = (data as { detail?: unknown } | null)?.detail;
+    throw new ApiError(res.status, detail ?? data);
+  }
   return data as T;
+}
+
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
 }
 
 /** ws(s)://… for a path on the API host (the browser opens the socket on the API directly). */

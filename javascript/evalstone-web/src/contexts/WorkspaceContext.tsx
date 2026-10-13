@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
-import type { Organization, Project } from "@/lib/types";
+import type { OrganizationDetail as Organization, Project } from "@/lib/types";
 
 /** The org and project the URL points at, resolved once per id (what every page under /o/… needs). */
 type Workspace = {
@@ -41,11 +41,11 @@ export function WorkspaceProvider({
   projectId?: string;
   children: React.ReactNode;
 }) {
-  // `loaded.key` says which (org, tick) the data belongs to; loading = it is not the current one.
-  type Loaded = { key: string; organization: Organization | null; projects: Project[] };
+  // `loaded.organizationId` says which org the data belongs to; loading = no data for this org yet.
+  // A `reloadProjects()` re-fetches in the background: the shell (sidebar, socket, feed) stays mounted.
+  type Loaded = { organizationId: string; organization: Organization | null; projects: Project[] };
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [tick, setTick] = useState(0);
-  const key = `${organizationId}:${tick}`;
 
   useEffect(() => {
     let alive = true;
@@ -53,17 +53,17 @@ export function WorkspaceProvider({
       .then(([org, ps]) => {
         if (!alive) return;
         rememberOrganization(org.id);
-        setLoaded({ key, organization: org, projects: ps });
+        setLoaded({ organizationId, organization: org, projects: ps });
       })
       .catch(() => {
-        if (alive) setLoaded({ key, organization: null, projects: [] });
+        if (alive) setLoaded({ organizationId, organization: null, projects: [] });
       });
     return () => {
       alive = false;
     };
-  }, [organizationId, key]);
+  }, [organizationId, tick]);
 
-  const current = loaded && loaded.key === key ? loaded : null;
+  const current = loaded && loaded.organizationId === organizationId ? loaded : null;
   const loading = current === null;
   const organization = current?.organization ?? null;
   const projects = useMemo(() => current?.projects ?? [], [current]);

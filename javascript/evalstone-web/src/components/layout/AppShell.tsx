@@ -2,25 +2,22 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
 import { WorkspaceProvider, useWorkspace } from "@/contexts/WorkspaceContext";
 import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RequireUser } from "@/components/auth/RequireUser";
 
 /** Everything under /o/[oid] (and /o/[oid]/p/[pid]): signed in, org resolved, sidebar, main. */
 export function AppShell({ organizationId, projectId, children }: { organizationId: string; projectId?: string; children: React.ReactNode }) {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-  useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [loading, user, router]);
-  if (loading) return <Skeleton className="m-8 h-40 w-full" data-testid="loading" />;
-  if (!user) return null;
   return (
-    <WorkspaceProvider key={organizationId} organizationId={organizationId} projectId={projectId}>
-      <Gate projectId={projectId}>{children}</Gate>
-    </WorkspaceProvider>
+    <RequireUser>
+      {() => (
+        <WorkspaceProvider key={organizationId} organizationId={organizationId} projectId={projectId}>
+          <Gate projectId={projectId}>{children}</Gate>
+        </WorkspaceProvider>
+      )}
+    </RequireUser>
   );
 }
 

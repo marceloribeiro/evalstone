@@ -8,6 +8,10 @@ export type Seed = { email: string; password: string; token: string; api: APIReq
 export async function newUser(prefix = "web"): Promise<Seed> {
   const api = await request.newContext({ baseURL: API_URL });
   const email = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+  return registerUser(api, email);
+}
+
+export async function registerUser(api: APIRequestContext, email: string): Promise<Seed> {
   const password = "playwright-pass-1";
   const res = await api.post("/auth/register", { data: { email, password, first_name: "Play", last_name: "Wright" } });
   if (!res.ok()) throw new Error(`register failed: ${res.status()} ${await res.text()}`);
@@ -27,4 +31,9 @@ export async function newOrganization(seed: Seed, name: string): Promise<{ id: s
 
 export async function newProject(seed: Seed, orgId: string, name: string): Promise<{ id: string; name: string }> {
   return authed(seed, "post", `/organizations/${orgId}/projects`, { name });
+}
+
+/** Invite an existing user into the organization (the API joins them immediately). */
+export async function inviteMember(seed: Seed, orgId: string, email: string, role: "member" | "admin" = "member") {
+  return authed(seed, "post", `/organizations/${orgId}/invitations`, { email, role });
 }

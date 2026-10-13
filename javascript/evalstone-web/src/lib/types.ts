@@ -5,6 +5,8 @@ export type AuthOut = { user: User; token: string };
 
 export type Role = "member" | "admin" | "owner";
 export type Organization = { id: string; name: string; website_url: string | null; created_at: string };
+/** `GET /organizations/{id}`: the organization plus the caller's role in it. */
+export type OrganizationDetail = Organization & { role: Role };
 export type Member = { id: string; role: Role; user: User; created_at: string };
 
 export type Project = {

@@ -27,6 +27,12 @@ class OrganizationOut(BaseModel):
     created_at: datetime
 
 
+class OrganizationDetailOut(OrganizationOut):
+    """`GET /organizations/{id}`: the organization plus the caller's role (the web gates on it)."""
+
+    role: Role
+
+
 class MemberOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

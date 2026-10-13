@@ -21,7 +21,12 @@ export function ProjectOverview() {
   const { status, recent } = useLive();
   const runs = useLoader(() => api<Page<Run>>(`/projects/${project!.id}/runs`, { query: { limit: 5 } }), [project?.id]);
   useLiveEvent("run.stored", () => runs.reload());
-  const keys = useLoader(() => api<IngestKey[]>(`/projects/${project!.id}/ingest-keys`), [project?.id]);
+  // ingest keys are admin-only on the API (403 for a member): do not even ask for them
+  const canManageKeys = organization?.role === "admin" || organization?.role === "owner";
+  const keys = useLoader(
+    () => (canManageKeys ? api<IngestKey[]>(`/projects/${project!.id}/ingest-keys`) : Promise.resolve([] as IngestKey[])),
+    [project?.id, canManageKeys],
+  );
   const [keyName, setKeyName] = useState("laptop");
   const [minted, setMinted] = useState<IngestKeyCreated | null>(null);
   if (!organization || !project) return null;
@@ -61,6 +66,7 @@ export function ProjectOverview() {
   url: ${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8181"}
   project: ${project.id}`}
             </pre>
+            {canManageKeys ? (
             <form onSubmit={mint} className="flex items-end gap-2">
               <div className="space-y-1">
                 <Label htmlFor="key-name">Ingest key name</Label>
@@ -70,6 +76,9 @@ export function ProjectOverview() {
                 Create ingest key
               </Button>
             </form>
+            ) : (
+              <p className="text-sm text-muted-foreground">Ask an organization admin for an ingest key.</p>
+            )}
             {minted && (
               <div role="status" className="rounded-md border border-dashed p-3 text-sm">
                 <p className="font-medium">Copy it now — it is shown once.</p>
