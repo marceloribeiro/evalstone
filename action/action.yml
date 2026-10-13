@@ -1,0 +1,142 @@
+name: "Evalstone"
+description: "Run an Evalstone suite on a pull request: summary in the job, comment on the PR, fail on the gate."
+author: "marceloribeiro"
+branding:
+  icon: "check-circle"
+  color: "orange"
+
+inputs:
+  suite:
+    description: "Suite name from evalstone.yaml"
+    required: true
+  working-directory:
+    description: "Directory holding evalstone.yaml"
+    required: false
+    default: "."
+  config:
+    description: "Path to evalstone.yaml, relative to working-directory"
+    required: false
+    default: "evalstone.yaml"
+  install:
+    description: "pip install spec for evalstone (e.g. 'evalstone', 'evalstone[anthropic]', or a path)"
+    required: false
+    default: "evalstone"
+  python-version:
+    description: "Python version to set up"
+    required: false
+    default: "3.12"
+  baseline:
+    description: "A saved JSON report to gate regressions against: absolute, or relative to working-directory (optional)"
+    required: false
+    default: ""
+  report:
+    description: "Where to write the JSON report (relative to working-directory). Default: a file under the runner's temp dir, so the checkout stays clean; see the `report` output"
+    required: false
+    default: ""
+  failures:
+    description: "How many failing results to show (0: none)"
+    required: false
+    default: "10"
+  comment:
+    description: "Post/update a PR comment with the report (needs github-token with pull-requests: write; skipped on pull requests from forks, whose token cannot comment)"
+    required: false
+    default: "true"
+  comment-id:
+    description: "Distinguishes comments when the same suite runs in several jobs (set it to a matrix value)"
+    required: false
+    default: ""
+  github-token:
+    description: "Token for the PR comment (defaults to github.token)"
+    required: false
+    default: ${{ github.token }}
+  fail-on-gate:
+    description: "Fail the step when the gate does not pass"
+    required: false
+    default: "true"
+
+outputs:
+  report:
+    description: "Absolute path of the JSON report (usable as a later run's `baseline`)"
+    value: ${{ steps.run.outputs.report }}
+  passed:
+    description: "'true' when the gate passed, 'false' when it failed, 'none' when the suite has no gate"
+    value: ${{ steps.run.outputs.passed }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install evalstone
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}   # so a path spec is relative to it
+      env:
+        INSTALL: ${{ inputs.install }}
+      run: python -m pip install --upgrade pip && pip install "$INSTALL"
+
+    - name: Run the suite
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      # inputs reach the shell through the environment, never by interpolation
+      env:
+        SUITE: ${{ inputs.suite }}
+        CONFIG: ${{ inputs.config }}
+        BASELINE: ${{ inputs.baseline }}
+        REPORT: ${{ inputs.report }}
+        FAILURES: ${{ inputs.failures }}
+      run: |
+        set -euo pipefail
+        REPORT="${REPORT:-$RUNNER_TEMP/evalstone-report.json}"
+        case "$REPORT" in /*) ;; *) REPORT="$PWD/$REPORT" ;; esac
+        mkdir -p "$(dirname "$REPORT")"
+        ARGS=(run "$SUITE" --config "$CONFIG" --report "$REPORT" --failures "$FAILURES")
+        if [ -n "$BASELINE" ]; then ARGS+=(--baseline "$BASELINE"); fi
+        set +e
+        evalstone "${ARGS[@]}"
+        STATUS=$?
+        set -e
+        test "$STATUS" -eq 0 || { echo "::error::evalstone run exited $STATUS"; exit "$STATUS"; }
+        PASSED=$(REPORT="$REPORT" python -c "import json, os; v = json.load(open(os.environ['REPORT']))['gate_passed']; print('none' if v is None else str(v).lower())")
+        COMMENT="$RUNNER_TEMP/evalstone-comment.md"
+        evalstone show "$REPORT" --markdown --failures "$FAILURES" > "$COMMENT"
+        cat "$COMMENT" >> "$GITHUB_STEP_SUMMARY"
+        echo "report=$REPORT" >> "$GITHUB_OUTPUT"
+        echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+        echo "comment=$COMMENT" >> "$GITHUB_OUTPUT"
+
+    - name: Comment on the pull request
+      # a fork's token is read-only: the comment step would 403 and fail a green run
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+      continue-on-error: true
+      uses: actions/github-script@v7
+      env:
+        COMMENT_FILE: ${{ steps.run.outputs.comment }}
+        SUITE: ${{ inputs.suite }}
+        COMMENT_ID: ${{ inputs.comment-id }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const body = fs.readFileSync(process.env.COMMENT_FILE, 'utf8');
+          const { SUITE, COMMENT_ID } = process.env;
+          const marker = COMMENT_ID ? `<!-- evalstone:${SUITE}:${COMMENT_ID} -->` : `<!-- evalstone:${SUITE} -->`;
+          const { owner, repo } = context.repo;
+          const issue_number = context.payload.pull_request.number;
+          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+          const mine = comments.find(c => c.body && c.body.includes(marker));
+          const full = marker + '\n' + body;
+          if (mine) {
+            await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body: full });
+          } else {
+            await github.rest.issues.createComment({ owner, repo, issue_number, body: full });
+          }
+
+    - name: Enforce the gate
+      if: ${{ inputs.fail-on-gate == 'true' && steps.run.outputs.passed == 'false' }}
+      shell: bash
+      env:
+        SUITE: ${{ inputs.suite }}
+      run: echo "::error::evalstone gate failed for suite '$SUITE'"; exit 1

@@ -14,7 +14,7 @@ from rich.table import Table
 
 from evalstone import __version__
 from evalstone.config import CONFIG_FILENAME, Config
-from evalstone.run import Run, compare
+from evalstone.run import DEFAULT_FAILURES, Run, compare
 
 app = typer.Typer(
     name="evalstone",
@@ -30,7 +30,9 @@ ReportOpt = typer.Option(None, "--report", "-r", help="Where to write the JSON r
 BaselineOpt = typer.Option(
     None, "--baseline", "-b", help="A previous report to gate regressions against"
 )
-FailuresOpt = typer.Option(10, "--failures", help="How many failing results to print")
+FailuresOpt = typer.Option(
+    DEFAULT_FAILURES, "--failures", help="How many failing results to print (0: none)"
+)
 DirArg = typer.Argument(Path("."), help="Where to create evalstone.yaml and evals/")
 
 
@@ -161,10 +163,16 @@ def compare_cmd(a: Path, b: Path) -> None:
     raise typer.Exit(1 if cmp.regressions else 0)
 
 
+MarkdownOpt = typer.Option(False, "--markdown", help="Print GitHub-flavoured markdown instead")
+
+
 @app.command()
-def show(report: Path, failures: int = FailuresOpt) -> None:
-    """Print a saved report."""
+def show(report: Path, failures: int = FailuresOpt, markdown: bool = MarkdownOpt) -> None:
+    """Print a saved report (as a table, or as markdown for a PR comment)."""
     r = _load_run(report)
+    if markdown:
+        typer.echo(r.markdown(failures=failures))
+        return
     console.print(_run_table(r))
     _print_failures(r, failures)
     _print_gate(r)

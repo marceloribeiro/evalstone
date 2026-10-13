@@ -13,6 +13,18 @@ from pydantic import BaseModel, Field
 from evalstone.output import Output
 from evalstone.score import Score
 
+DEFAULT_FAILURES = 10  # failing results listed by the CLI, the markdown report and the action
+
+
+def display_reason(score: Score) -> str:
+    """What to show for a result: its reason, else its error text, else nothing."""
+    return score.reason or score.error or ""
+
+
+def _cell(text: str) -> str:
+    """One markdown table cell: no pipes or line breaks may leak out of it."""
+    return text.replace("|", "\\|").replace("\r\n", " ").replace("\n", " ").replace("\r", " ")
+
 
 class Result(BaseModel):
     """One sample x one check."""
@@ -134,17 +146,25 @@ class Run(BaseModel):
     def failures(self) -> list[Result]:
         return [r for r in self.results if not r.score.passed]
 
-    def failure_lines(self, limit: int = 10) -> list[str]:
+    def failures_shown(
+        self, limit: int = DEFAULT_FAILURES
+    ) -> tuple[list[Result], list[Result], str]:
+        """``(all failing, the first ``limit``, header suffix)``; ``limit <= 0`` shows none."""
+        failing = self.failures()
+        shown = failing[: max(limit, 0)]
+        suffix = f", first {len(shown)}" if len(failing) > len(shown) else ""
+        return failing, shown, suffix
+
+    def failure_lines(self, limit: int = DEFAULT_FAILURES) -> list[str]:
         """Plain-text failing results: a header, then ``flag sample · check · reason``
         for the first ``limit``. Empty when nothing failed."""
-        failures = self.failures()
-        if not failures:
+        failing, shown, suffix = self.failures_shown(limit)
+        if not failing:
             return []
-        suffix = f", first {limit}:" if len(failures) > limit else ":"
-        lines = [f"{len(failures)} failing result(s){suffix}"]
-        for r in failures[:limit]:
+        lines = [f"{len(failing)} failing result(s){suffix}:"]
+        for r in shown:
             flag = "error" if r.score.error else "fail"
-            lines.append(f"  {flag} {r.sample_id} · {r.check_key} · {r.score.reason}")
+            lines.append(f"  {flag} {r.sample_id} · {r.check_key} · {display_reason(r.score)}")
         return lines
 
     def table(self) -> str:
@@ -166,6 +186,61 @@ class Run(BaseModel):
             f"{s.samples} samples · {s.duration_ms / 1000:.1f}s"
         )
         return "\n".join(rows)
+
+    def markdown(self, *, failures: int = DEFAULT_FAILURES, title: str | None = None) -> str:
+        """A GitHub-flavoured markdown report: verdict, per-check table, failures.
+
+        ``failures`` caps the listed failing results; ``0`` lists none.
+        """
+        s = self.summary
+        verdict = (
+            "✅ gate passed"
+            if self.gate_passed
+            else "❌ gate failed"
+            if self.gate_passed is False
+            else "no gate"
+        )
+        head = title or f"Evalstone · `{self.suite}`"
+        lines = [
+            f"### {head} — {verdict}",
+            "",
+            f"`{self.dataset}@{self.dataset_hash[:12]}` · {s.samples} samples · "
+            f"pass **{s.pass_rate:.1%}** · mean {s.mean_score:.3f} · errors {s.errors} · "
+            f"cost ${s.cost_usd:.4f} · {s.duration_ms / 1000:.1f}s"
+            + (f" · `{self.git_sha[:8]}`" if self.git_sha else ""),
+            "",
+            "| check | n | pass | mean | errors |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+        for c in s.per_check:
+            lines.append(
+                f"| `{_cell(c.key)}` | {c.n} | {c.pass_rate:.1%} | {c.mean_score:.3f} "
+                f"| {c.errors} |"
+            )
+        if self.gate_lines:
+            lines += ["", "<details><summary>gate</summary>", "", "```"]
+            lines += self.gate_lines
+            lines += ["```", "", "</details>"]
+        failing, shown, suffix = self.failures_shown(failures)
+        if shown:
+            lines += [
+                "",
+                f"<details><summary>{len(failing)} failing result(s){suffix}</summary>",
+                "",
+                "| sample | check | value | reason |",
+                "| --- | --- | ---: | --- |",
+            ]
+            for r in shown:
+                flag = "⚠️ " if r.score.error else ""
+                lines.append(
+                    f"| `{_cell(r.sample_id)}` | `{_cell(r.check_key)}` | {r.score.value:.2f} | "
+                    f"{flag}{_cell(display_reason(r.score))} |"
+                )
+            lines += ["", "</details>"]
+        elif failing:
+            lines += ["", f"{len(failing)} failing result(s)"]
+        lines += ["", f"<sub>run `{self.id}` · evalstone</sub>"]
+        return "\n".join(lines)
 
     @staticmethod
     def now() -> datetime:

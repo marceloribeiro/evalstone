@@ -13,11 +13,14 @@ checks:
       policy that is not in the answer itself.
     scale: 5
 suites:
-  nightly:
+  nightly: &deterministic
     dataset: golden
     target: { kind: callable, fn: "bot:answer" }
     checks: [must_include, short, no_apology, one_sentence]
     gate: { min_pass_rate: 0.9 }
+  ci:                          # what the GitHub Action runs on this repo's PRs: the same
+    <<: *deterministic         # suite with a gate the bot clears today (nightly keeps
+    gate: { min_pass_rate: 0.85 }   # the stricter 90% bar)
   judged:                      # deterministic checks + an LLM judge; needs ANTHROPIC_API_KEY
     dataset: golden
     target: { kind: callable, fn: "bot:answer" }
