@@ -192,9 +192,7 @@ def test_unpriced_calls_are_counted(client, judged, db):
             headers=judged["headers"],
         )
     assert r.status_code == 200 and r.json()["cost_usd"] is None
-    usage = client.get(f"/projects/{judged['id']}/model/calls", headers=judged["headers"]).json()[
-        "usage"
-    ]
+    usage = client.get(f"/projects/{judged['id']}/model/usage", headers=judged["headers"]).json()
     assert usage["unpriced_calls"] == 1 and usage["cost_usd"] == 0.0
 
 
