@@ -1,0 +1,18 @@
+[Unit]
+Description=Evalstone API (uvicorn)
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/evalstone-api/current
+EnvironmentFile=/home/ubuntu/evalstone-api/current/.env
+Environment=PATH=/home/ubuntu/evalstone-api/current/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/ubuntu/evalstone-api/current/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8181
+StandardOutput=append:/home/ubuntu/evalstone-api/current/logs/api.log
+StandardError=append:/home/ubuntu/evalstone-api/current/logs/api.error.log
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

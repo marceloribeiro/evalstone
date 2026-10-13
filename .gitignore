@@ -42,3 +42,6 @@ npm-debug.log*
 
 # ── Evalstone run reports (written by `evalstone run`) ──────────────────
 **/evalstone-report.json
+
+# ── Celery beat state (written by `just beat`) ───────────────────────────
+**/celerybeat-schedule*

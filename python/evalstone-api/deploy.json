@@ -1,0 +1,10 @@
+{
+  "production": {
+    "server": "homemarket-web01",
+    "github": "https://github.com/marceloribeiro/evalstone.git",
+    "package_path": "python/evalstone-api",
+    "deploy_location": "/home/ubuntu/evalstone-api",
+    "deploy_branch": "main",
+    "services": ["evalstone-api", "evalstone-api-celery", "evalstone-api-celery-beat"]
+  }
+}

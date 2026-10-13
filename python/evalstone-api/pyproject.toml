@@ -1,0 +1,19 @@
+[project]
+name = "evalstone-api"
+version = "0.1.0"
+description = "Evalstone center API — the sole owner of PostgreSQL."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["B008"]  # FastAPI Depends() in defaults
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
