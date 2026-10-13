@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -186,23 +187,69 @@ for _mod in (rag, safety, trajectory, comparison):
             FACTORIES[f"{_mod.__name__.rsplit('.', 1)[-1]}.{_name}"] = _fn
 
 
-def _load_module(dotted: str, root: Path) -> Any:
-    """Import ``dotted`` from the project at ``root``, fresh.
+_LOADED: dict[tuple[str, str], tuple[int, dict[str, tuple[int, int]]]] = {}
 
-    ``root`` is put on ``sys.path``. Everything cached under the module's top-level
-    package — the chain, its siblings, its parents — is evicted first, whether it
-    came from this root (so ``@check`` registrations re-run against a cleared
-    registry) or from another project that happens to use the same module names.
-    A fresh import gives the module new globals, which is how the registry tells
-    a re-import apart from a genuine duplicate key.
+
+def _project_modules(top: str, root_s: str) -> dict[str, tuple[int, int]]:
+    """``{module: (mtime_ns, size)}`` for every cached module under ``top`` whose file
+    lives under ``root``."""
+    found: dict[str, tuple[int, int]] = {}
+    for name, mod in list(sys.modules.items()):
+        if name != top and not name.startswith(top + "."):
+            continue
+        file = getattr(mod, "__file__", None)
+        if not file or not str(Path(file).resolve()).startswith(root_s + os.sep):
+            continue
+        try:
+            st = os.stat(file)
+        except OSError:
+            continue
+        found[name] = (st.st_mtime_ns, st.st_size)
+    return found
+
+
+def _load_module(dotted: str, root: Path) -> Any:
+    """Import ``dotted`` from the project at ``root``.
+
+    ``root`` is put on ``sys.path``. The module is reused when it was already
+    imported from this root — by an earlier call, with none of the project's
+    files under its top-level package changed since and the check registry not
+    cleared in between, or by the caller itself — so a test that patches the
+    project's modules and then runs a suite sees its patches, and a long-lived
+    server still picks up edits.
+    Otherwise everything cached under the top-level package — the chain, its
+    siblings, its parents — is evicted first, whether it came from this root
+    (so ``@check`` registrations re-run against a cleared registry) or from
+    another project that happens to use the same module names, and a fresh
+    import gives the module new globals, which is how the registry tells a
+    re-import apart from a genuine duplicate key.
     """
+    from evalstone.checks import registry
+
     root_s = str(root.resolve())
     if root_s not in sys.path:
         sys.path.insert(0, root_s)
     top = dotted.split(".")[0]
+    key = (dotted, root_s)
+    module = sys.modules.get(dotted)
+    if module is not None:
+        cached = _LOADED.get(key)
+        if cached is not None:
+            generation, snapshot = cached
+            reuse = generation == registry.generation and _project_modules(top, root_s) == snapshot
+        else:
+            # imported by the caller itself (a test that patched it, say): keep it as
+            # long as it is this project's file, not a namesake from another root
+            file = getattr(module, "__file__", None)
+            reuse = bool(file) and str(Path(file).resolve()).startswith(root_s + os.sep)
+        if reuse:
+            _LOADED[key] = (registry.generation, _project_modules(top, root_s))
+            return module
     for name in [n for n in sys.modules if n == top or n.startswith(top + ".")]:
         del sys.modules[name]
-    return importlib.import_module(dotted)
+    module = importlib.import_module(dotted)
+    _LOADED[key] = (registry.generation, _project_modules(top, root_s))
+    return module
 
 
 def _import_callable(ref: str, root: Path) -> Any:

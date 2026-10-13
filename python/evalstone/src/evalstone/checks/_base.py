@@ -29,6 +29,7 @@ class Registry:
 
     def __init__(self) -> None:
         self._checks: dict[str, Check] = {}
+        self.generation = 0  # bumped by clear(); project modules re-import when it moves
 
     def register(self, chk: Check, *, replace: bool = False) -> Check:
         """Register ``chk`` under its key.
@@ -59,6 +60,7 @@ class Registry:
 
     def clear(self) -> None:
         self._checks.clear()
+        self.generation += 1
 
 
 def _reimported(previous: Check, current: Check) -> bool:

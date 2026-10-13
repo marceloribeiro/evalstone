@@ -172,3 +172,40 @@ def test_check_types_are_an_allowlist_and_bad_kwargs_are_clear(project):
     cfg.checks["rx"] = {"type": "regex"}
     with pytest.raises(ValueError, match="pattern"):
         cfg.check("rx")
+
+
+def test_activate_reuses_the_module_until_it_changes_or_the_registry_is_cleared(tmp_path):
+    import sys
+
+    from evalstone.checks import registry
+
+    cfg = _project(tmp_path, "one")
+    cfg.activate()
+    first = sys.modules["evals.checks"]
+    cfg.activate()
+    assert sys.modules["evals.checks"] is first  # unchanged project: same module object
+
+    helpers = tmp_path / "evals" / "helpers.py"
+    helpers.write_text("MARK = 'two'  # edited\n")  # a new size: no stale .pyc within the second
+    cfg.activate()
+    assert sys.modules["evals.checks"] is not first  # a sibling file changed: fresh import
+    second = sys.modules["evals.checks"]
+    assert second.helpers.MARK == "two"
+
+    registry.clear()
+    cfg.activate()
+    assert sys.modules["evals.checks"] is not second and "marked" in registry
+
+
+def test_activate_keeps_a_module_the_caller_imported_from_this_root(tmp_path, monkeypatch):
+    import importlib
+    import sys
+
+    _project(tmp_path, "mine")
+    for name in [n for n in sys.modules if n == "evals" or n.startswith("evals.")]:
+        monkeypatch.delitem(sys.modules, name)  # another test's project of the same name
+    monkeypatch.syspath_prepend(str(tmp_path))
+    mod = importlib.import_module("evals.checks")
+    mod.MARK = "patched"
+    Config.load(tmp_path).activate()
+    assert sys.modules["evals.checks"] is mod and sys.modules["evals.checks"].MARK == "patched"

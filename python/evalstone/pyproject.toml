@@ -43,6 +43,9 @@ dev = [
 [project.scripts]
 evalstone = "evalstone.cli:main"
 
+[project.entry-points.pytest11]
+evalstone = "evalstone.pytest_plugin"
+
 [project.urls]
 Homepage = "https://evalstone.com"
 Documentation = "https://evalstone.com/docs"

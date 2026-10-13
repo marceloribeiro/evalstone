@@ -82,14 +82,14 @@ def _run_table(run: Run) -> Table:
 
 
 def _print_failures(run: Run, limit: int) -> None:
-    failures = run.failures()
-    if not failures:
+    lines = run.failure_lines(limit)
+    if not lines:
         return
-    suffix = f", first {limit}:" if len(failures) > limit else ":"
-    console.print(f"\n[bold]{len(failures)} failing result(s)[/bold]{suffix}")
-    for r in failures[:limit]:
-        flag = "[red]error[/red]" if r.score.error else "[yellow]fail[/yellow]"
-        console.print(f"  {flag} {escape(f'{r.sample_id} · {r.check_key} · {r.score.reason}')}")
+    console.print(f"\n[bold]{escape(lines[0])}[/bold]")
+    for line in lines[1:]:
+        colour = "red" if line.startswith("  error") else "yellow"
+        flag, _, rest = line.strip().partition(" ")
+        console.print(f"  [{colour}]{flag}[/{colour}] {escape(rest)}")
 
 
 def _print_gate(run: Run) -> None:
