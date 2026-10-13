@@ -51,7 +51,7 @@ class SuiteConfig(BaseModel):
     @classmethod
     def _needs_kind(cls, v: dict[str, Any]) -> dict[str, Any]:
         if "kind" not in v:
-            raise ValueError("target needs a `kind` (callable | http | recorded)")
+            raise ValueError("target needs a `kind` (callable | http | recorded | prompt)")
         return v
 
 
@@ -143,8 +143,12 @@ class Config(BaseModel):
         if kind == "recorded" and "path" in spec:
             spec["path"] = self.root / spec["path"]
         if kind == "prompt":
+            if not spec.get("model"):
+                raise ValueError(
+                    "prompt target needs its own `model` — it is the system under test and must "
+                    "not silently share judges.default_model (a model grading itself)"
+                )
             spec["providers"] = self.provider_registry()
-            spec.setdefault("model", self.judges.default_model)
         return make_target(kind, **spec)
 
     def suite(self, name: str) -> tuple[Suite, Target]:

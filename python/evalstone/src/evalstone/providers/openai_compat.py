@@ -1,27 +1,33 @@
-"""OpenAI-compatible Chat Completions adapter (OpenAI, OpenRouter, Ollama, vLLM, …)."""
+"""OpenAI-compatible Chat Completions adapter (OpenAI, OpenRouter, Ollama, vLLM, …).
+
+api.openai.com's current models reject ``max_tokens`` in favour of
+``max_completion_tokens``; compatible servers mostly still want ``max_tokens``.
+The parameter name is picked from the host and can be forced with
+``ProviderConfig(max_tokens_param=...)``.
+"""
 
 from __future__ import annotations
 
-import time
 from typing import Any
-
-import httpx
+from urllib.parse import urlparse
 
 from evalstone.providers import ChatRequest, ChatResponse, ProviderConfig, ProviderError, price
+from evalstone.providers._http import HttpProvider
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 
-class OpenAICompatProvider:
+class OpenAICompatProvider(HttpProvider):
     name = "openai"
+    default_base_url = DEFAULT_BASE_URL
+    default_key_env = "OPENAI_API_KEY"
 
     def __init__(self, config: ProviderConfig, *, prices: dict | None = None, client: Any = None):
-        self.base_url = (config.base_url or DEFAULT_BASE_URL).rstrip("/")
-        self.api_key = config.resolve_key("OPENAI_API_KEY")
-        self.headers = dict(config.headers)
-        self.timeout = config.timeout
-        self.prices = prices or {}
-        self._client = client
+        super().__init__(config, prices=prices, client=client)
+        host = urlparse(self.base_url).hostname or ""
+        self.max_tokens_param = config.max_tokens_param or (
+            "max_completion_tokens" if host.endswith("openai.com") else "max_tokens"
+        )
 
     def _headers(self) -> dict[str, str]:
         h = {"Content-Type": "application/json", **self.headers}
@@ -37,25 +43,11 @@ class OpenAICompatProvider:
         body: dict[str, Any] = {
             "model": request.model,
             "messages": messages,
-            "max_tokens": request.max_tokens,
+            self.max_tokens_param: request.max_tokens,
         }
         if request.temperature is not None:
             body["temperature"] = request.temperature
-        client = self._client or httpx.Client(timeout=self.timeout)
-        started = time.perf_counter()
-        try:
-            resp = client.post(
-                f"{self.base_url}/chat/completions", json=body, headers=self._headers()
-            )
-        except httpx.HTTPError as exc:
-            raise ProviderError(f"openai: {type(exc).__name__}: {exc}") from exc
-        finally:
-            if self._client is None:
-                client.close()
-        latency = (time.perf_counter() - started) * 1000
-        if resp.status_code >= 400:
-            raise ProviderError(f"openai: HTTP {resp.status_code}: {resp.text[:300]}")
-        data = resp.json()
+        data, latency = self.post_json(f"{self.base_url}/chat/completions", body, self._headers())
         try:
             choice = data["choices"][0]
             text = choice["message"].get("content") or ""

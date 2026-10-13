@@ -155,7 +155,10 @@ def test_prompt_target_formats_template_and_reports_cost():
     assert out.value == "Within 30 days." and out.cost_usd == 0.001 and out.model == "gen"
     assert prov.calls[0].messages[0].content == "Q: Can I return a sale item?\nA:"
     assert prov.calls[0].system == "You are support."
-    assert t.describe() == {"kind": "prompt", "model": "openai/gen", "system": True}
+    desc = t.describe()
+    assert desc["kind"] == "prompt" and desc["model"] == "openai/gen" and desc["system"] is True
+    other = PromptTarget("openai/gen", "Reworded: {question}", system="You are support.")
+    assert other.describe()["prompt_hash"] != desc["prompt_hash"]
     missing = PromptTarget("openai/gen", "{missing}", providers=reg).produce(S)
     assert missing.error.startswith("prompt target: template placeholder")
     assert PromptTarget("openai/gen").produce(S).error == "prompt target: no providers configured"
@@ -183,7 +186,7 @@ def test_config_wires_providers_judges_prompt_targets_and_prices(tmp_path, monke
             suites:
               s:
                 dataset: golden
-                target: { kind: prompt, template: "Answer: {question}" }
+                target: { kind: prompt, model: openai/gen, template: "Answer: {question}" }
                 checks: [helpful, must]
             """
         )
@@ -196,9 +199,53 @@ def test_config_wires_providers_judges_prompt_targets_and_prices(tmp_path, monke
     prov = FakeProvider(reply="Within 30 days.", judge_reply='{"score": 3, "reason": "ok"}')
     cfg.provider_registry().register("openai", prov)
     suite, target = cfg.suite("s")
-    assert target.describe()["kind"] == "prompt" and target.model == "openai/judge"
+    assert target.describe()["kind"] == "prompt" and target.model == "openai/gen"
+    cfg.suites["s"].target = {"kind": "prompt", "template": "x"}
+    with pytest.raises(ValueError, match="needs its own `model`"):
+        cfg.suite("s")
     run = suite.run(target, ctx=cfg.context())
     assert run.summary.pass_rate == 1.0 and run.summary.results == 2
     cfg.checks["bad"] = {"type": "judge"}
     with pytest.raises(ValueError, match=r"check 'bad' \(judge\): .*rubric"):
         cfg.check("bad")
+
+
+# ── review findings on PR 5 ──────────────────────────────────────────────────
+
+
+def test_binary_scale_can_fail_and_pass_level_is_a_rubric_level():
+    yes_no = judge("ok", "r", scale=2)
+    no = ctx_with(FakeProvider(judge_reply='{"score": 1}'))
+    yes = ctx_with(FakeProvider(judge_reply='{"score": 2}'))
+    assert yes_no(S, Output(value="x"), no).passed is False
+    assert yes_no(S, Output(value="x"), yes).passed is True
+    at3 = judge("g", "r", scale=5, pass_level=3)
+    three = ctx_with(FakeProvider(judge_reply='{"score": 3}'))
+    assert at3(S, Output(value="x"), three).passed is True and at3.pass_at == 0.5
+    with pytest.raises(ValueError, match=r"0\.\.1 fraction"):
+        judge("bad", "r", scale=5, threshold=4)
+    with pytest.raises(ValueError, match="not both"):
+        judge("bad", "r", pass_level=4, threshold=0.5)
+    with pytest.raises(ValueError, match="pass_level must be within"):
+        judge("bad", "r", scale=5, pass_level=9)
+
+
+def test_cache_serves_the_raw_verdict_so_thresholds_differ_per_judge():
+    prov = FakeProvider(judge_reply='{"score": 3, "reason": "meh"}')
+    ctx = ctx_with(prov)
+    strict = judge("a", "r")  # passes at level 4
+    loose = judge("b", "r", threshold=0.5)
+    first = strict(S, Output(value="x"), ctx)
+    second = loose(S, Output(value="x"), ctx)
+    assert len(prov.calls) == 1  # same rubric, same model, same prompt → one model call
+    assert first.passed is False and second.passed is True
+    assert second.raw["cached"] is True and second.reason == "3/5: meh"
+
+
+def test_judge_version_includes_the_resolved_default_model():
+    prov = FakeProvider()
+    chk = judge("h", "r")  # no model: relies on judges.default_model
+    a = chk(S, Output(value="Within 30 days."), ctx_with(prov, default="openai/judge-a"))
+    b = chk(S, Output(value="Within 30 days."), ctx_with(prov, default="openai/judge-b"))
+    assert a.raw["judge_version"] != b.raw["judge_version"]
+    assert len(prov.calls) == 2  # different resolved model → different cache key

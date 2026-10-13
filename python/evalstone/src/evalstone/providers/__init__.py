@@ -92,6 +92,8 @@ class ProviderConfig(BaseModel):
     api_key: str | None = Field(default=None, exclude=True, repr=False)
     headers: dict[str, str] = Field(default_factory=dict)
     timeout: float = 60.0
+    # OpenAI-compatible only: force "max_tokens" or "max_completion_tokens" (auto by host).
+    max_tokens_param: str | None = None
 
     def resolve_key(self, default_env: str) -> str | None:
         if self.api_key:

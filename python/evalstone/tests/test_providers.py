@@ -189,9 +189,57 @@ def test_registry_splits_model_strings_resolves_keys_from_env_and_accepts_fakes(
     assert echoed.text == "echo:x"
 
 
-def test_anthropic_missing_key_is_a_provider_error(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
-    prov = AnthropicProvider(ProviderConfig(api_key_env="EVALSTONE_TEST_NO_SUCH_KEY"))
-    with pytest.raises(ProviderError, match="anthropic: "):
+def test_anthropic_missing_key_is_a_provider_error():
+    """The SDK raises TypeError when it cannot resolve credentials; the adapter maps it.
+    A fake client reproduces that without ever touching the network or a local profile."""
+
+    class NoAuthMessages:
+        def create(self, **kwargs):
+            raise TypeError("Could not resolve authentication method. Expected an api_key…")
+
+    class NoAuthClient:
+        messages = NoAuthMessages()
+
+    prov = AnthropicProvider(ProviderConfig(), client=NoAuthClient())
+    with pytest.raises(ProviderError, match="anthropic: Could not resolve authentication"):
         prov.complete(REQ.model_copy(update={"model": "claude-haiku-5-5"}))
+
+
+# ── review findings on PR 5 ──────────────────────────────────────────────────
+
+
+def test_openai_max_tokens_param_follows_the_host_and_can_be_forced():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "x"}}], "usage": {}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    OpenAICompatProvider(ProviderConfig(api_key="k"), client=client).complete(REQ)
+    assert "max_completion_tokens" in seen["body"] and "max_tokens" not in seen["body"]
+    OpenAICompatProvider(
+        ProviderConfig(base_url="http://localhost:11434/v1"), client=client
+    ).complete(REQ)
+    assert "max_tokens" in seen["body"] and "max_completion_tokens" not in seen["body"]
+    forced = ProviderConfig(max_tokens_param="max_tokens")
+    OpenAICompatProvider(forced, client=client).complete(REQ)
+    assert "max_tokens" in seen["body"]
+
+
+def test_non_json_200_bodies_are_provider_errors_and_the_client_is_reused():
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, text="<html>maintenance</html>")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(ProviderError, match="openai: non-JSON response"):
+        OpenAICompatProvider(ProviderConfig(), client=client).complete(REQ)
+    with pytest.raises(ProviderError, match="gemini: non-JSON response"):
+        GeminiProvider(ProviderConfig(), client=client).complete(REQ)
+    own = OpenAICompatProvider(ProviderConfig(base_url="http://x/v1"))
+    assert own.client is own.client
+    own.close()
+    assert own._client is None

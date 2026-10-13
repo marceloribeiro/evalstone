@@ -16,7 +16,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
-from evalstone._json import dumps
+from evalstone._json import dumps, sha256
 from evalstone.dataset import Sample
 from evalstone.output import Output
 
@@ -218,14 +218,24 @@ class PromptTarget:
         self.providers = providers
 
     def describe(self) -> dict[str, Any]:
-        return {"kind": self.kind, "model": self.model, "system": bool(self.system)}
+        # The prompt IS the system under test: its content hash makes two runs over
+        # different prompts distinguishable in reports and baseline comparisons.
+        prompt_hash = sha256(
+            {"template": self.template, "system": self.system, "max_tokens": self.max_tokens}
+        )[:12]
+        return {
+            "kind": self.kind,
+            "model": self.model,
+            "system": bool(self.system),
+            "prompt_hash": prompt_hash,
+        }
 
     def produce(self, sample: Sample) -> Output:
         from evalstone.providers import ChatMessage, ProviderError
 
         if self.providers is None:
             return Output.failed("prompt target: no providers configured")
-        text = sample.input if isinstance(sample.input, str) else json.dumps(sample.input)
+        text = sample.input if isinstance(sample.input, str) else dumps(sample.input)
         fields = {"input": text}
         if isinstance(sample.input, dict):
             fields.update({k: v for k, v in sample.input.items() if isinstance(k, str)})

@@ -2,26 +2,18 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
-import httpx
-
-from evalstone.providers import ChatRequest, ChatResponse, ProviderConfig, ProviderError, price
+from evalstone.providers import ChatRequest, ChatResponse, ProviderError, price
+from evalstone.providers._http import HttpProvider
 
 DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 
-class GeminiProvider:
+class GeminiProvider(HttpProvider):
     name = "gemini"
-
-    def __init__(self, config: ProviderConfig, *, prices: dict | None = None, client: Any = None):
-        self.base_url = (config.base_url or DEFAULT_BASE_URL).rstrip("/")
-        self.api_key = config.resolve_key("GEMINI_API_KEY")
-        self.headers = dict(config.headers)
-        self.timeout = config.timeout
-        self.prices = prices or {}
-        self._client = client
+    default_base_url = DEFAULT_BASE_URL
+    default_key_env = "GEMINI_API_KEY"
 
     def complete(self, request: ChatRequest) -> ChatResponse:
         body: dict[str, Any] = {
@@ -42,19 +34,7 @@ class GeminiProvider:
         if self.api_key:
             headers["x-goog-api-key"] = self.api_key
         url = f"{self.base_url}/models/{request.model}:generateContent"
-        client = self._client or httpx.Client(timeout=self.timeout)
-        started = time.perf_counter()
-        try:
-            resp = client.post(url, json=body, headers=headers)
-        except httpx.HTTPError as exc:
-            raise ProviderError(f"gemini: {type(exc).__name__}: {exc}") from exc
-        finally:
-            if self._client is None:
-                client.close()
-        latency = (time.perf_counter() - started) * 1000
-        if resp.status_code >= 400:
-            raise ProviderError(f"gemini: HTTP {resp.status_code}: {resp.text[:300]}")
-        data = resp.json()
+        data, latency = self.post_json(url, body, headers)
         try:
             candidate = data["candidates"][0]
             parts = candidate.get("content", {}).get("parts", [])
