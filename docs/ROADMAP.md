@@ -11,7 +11,9 @@ Engineering-focused snapshot. Not a product commitment.
   provider adapters, `samples/rag-bot`. Shipped as PRs #1–#7. **On PyPI as
   0.1.0** (2026-10-13, tag `lib-v0.1.0`, trusted publisher via
   `.github/workflows/release.yml`).
-- **Integrations** — MCP server, pytest plugin, GitHub Action, terminal labeling. Shipped as PRs #8–#12, in 0.1.0.
+- **Integrations** — MCP server, pytest plugin and terminal labeling ship with
+  the library (PRs #8, #9, #11); the GitHub Action is hosted in the repository
+  (PR #10, tag `action-v0.1.0`). Site guides + reference: PR #12.
 
 ## Next (in order)
 
