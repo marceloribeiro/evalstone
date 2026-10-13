@@ -22,8 +22,9 @@ def schema() -> dict:
 
 def main(out: str = "openapi.json") -> int:
     path = Path(out)
-    path.write_text(json.dumps(schema(), indent=2, sort_keys=True) + "\n")
-    print(f"openapi → {path} ({len(schema()['paths'])} paths)")
+    doc = schema()
+    path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    print(f"openapi → {path} ({len(doc['paths'])} paths)")
     return 0
 
 

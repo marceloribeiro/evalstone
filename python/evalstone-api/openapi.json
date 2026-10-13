@@ -9631,6 +9631,53 @@
         ]
       }
     },
+    "/projects/{project_id}/ws-ticket": {
+      "post": {
+        "description": "A one-time ticket for `GET /ws/projects/{id}?ticket=\u2026` (valid 60 s).",
+        "operationId": "ws_ticket_projects__project_id__ws_ticket_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ws Ticket",
+        "tags": [
+          "live"
+        ]
+      }
+    },
     "/ready": {
       "get": {
         "description": "503 when PostgreSQL or Redis (the Celery broker) is unreachable; says which.",
