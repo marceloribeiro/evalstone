@@ -11,8 +11,8 @@ evalstone [--version] COMMAND
 | --- | --- |
 | `init [directory] [--project NAME]` | create a starter `evalstone.yaml`, `evals/golden.jsonl`, `evals/outputs.jsonl`, `evals/checks.py`; refuses to overwrite anything |
 | `list [--config PATH]` | datasets, configured checks, `@check`-registered checks, suites |
-| `run SUITE [--config] [--report PATH] [--baseline PATH] [--failures N] [--strict]` | run a suite, print the table, failing results and gate lines, write the JSON report; `--strict` exits 1 on a failed gate |
-| `gate SUITE [--config] [--report] [--baseline]` | `run --strict`: exit 1 when the gate fails |
+| `run SUITE [--config] [--report PATH] [--baseline PATH] [--failures N] [--strict] [--judge-model P/M]` | run a suite, print the table, failing results and gate lines, write the JSON report; `--strict` exits 1 on a failed gate; `--judge-model` overrides every judge's model for this run |
+| `gate SUITE [--config] [--report] [--baseline] [--judge-model P/M]` | `run --strict`: exit 1 when the gate fails |
 | `compare A B` | regressions, improvements, metric deltas between two reports; exit 1 when there are regressions |
 | `show REPORT [--failures N] [--markdown]` | print a saved report as a table, or as GitHub markdown |
 | `label REPORT [--out PATH] [--scale pass\|N] [--check KEY] [--labeler NAME] [--limit N]` | grade a run's outputs by hand into a labels JSONL (resumable) |

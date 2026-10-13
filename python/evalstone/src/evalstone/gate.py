@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -67,6 +67,12 @@ class Gate(BaseModel):
                 s.cost_usd <= self.max_cost_usd,
                 f"cost ${s.cost_usd:.4f} ≤ ${self.max_cost_usd:.4f}",
             )
+            unpriced = sum(1 for r in run.results if _unpriced(r))
+            if unpriced:
+                lines.append(
+                    f"WARN {unpriced} result(s) from an unpriced model counted as $0 "
+                    "(add it under `prices:` in evalstone.yaml)"
+                )
         if self.max_regression is not None:
             if baseline is None:
                 lines.append("SKIP regression: no baseline run")
@@ -82,3 +88,12 @@ class Gate(BaseModel):
 
 
 __all__ = ["Gate", "GateFailed", "GateReport"]
+
+
+def _unpriced(result: Any) -> bool:
+    """A judge or prompt-target call whose model is not in the price table."""
+    raw = result.score.raw
+    if isinstance(raw, dict) and raw.get("unpriced"):
+        return True
+    meta = getattr(result.output, "metadata", None)
+    return isinstance(meta, dict) and bool(meta.get("unpriced"))

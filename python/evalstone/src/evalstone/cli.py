@@ -28,6 +28,11 @@ err = Console(stderr=True, soft_wrap=True)  # never wrap paths inside error mess
 
 ConfigOpt = typer.Option("evalstone.yaml", "--config", "-c", help="Path to evalstone.yaml")
 ReportOpt = typer.Option(None, "--report", "-r", help="Where to write the JSON report")
+JudgeModelOpt = typer.Option(
+    None,
+    "--judge-model",
+    help="Override every judge's model for this run (provider/model), e.g. to compare judges",
+)
 BaselineOpt = typer.Option(
     None, "--baseline", "-b", help="A previous report to gate regressions against"
 )
@@ -124,6 +129,7 @@ def run(
     baseline: Path | None = BaselineOpt,
     failures: int = FailuresOpt,
     strict: bool = typer.Option(False, "--strict", help="Exit 1 when the gate fails"),
+    judge_model: str | None = JudgeModelOpt,
 ) -> None:
     """Run a suite, print the table, write the JSON report."""
     cfg = _load(config)
@@ -134,7 +140,9 @@ def run(
         raise typer.Exit(2) from None
     base = _load_run(baseline) if baseline else None
     with console.status(f"running {suite} over {len(s.dataset)} samples…"):
-        result = s.run(target, baseline=base, trigger="cli", ctx=cfg.context())
+        result = s.run(
+            target, baseline=base, trigger="cli", ctx=cfg.context(judge_model=judge_model)
+        )
     console.print(_run_table(result))
     _print_failures(result, failures)
     _print_gate(result)
@@ -151,9 +159,18 @@ def gate(
     config: str = ConfigOpt,
     report: Path | None = ReportOpt,
     baseline: Path | None = BaselineOpt,
+    judge_model: str | None = JudgeModelOpt,
 ) -> None:
     """Run a suite and exit 1 if its gate fails (for CI)."""
-    run(suite=suite, config=config, report=report, baseline=baseline, failures=10, strict=True)
+    run(
+        suite=suite,
+        config=config,
+        report=report,
+        baseline=baseline,
+        failures=10,
+        strict=True,
+        judge_model=judge_model,
+    )
 
 
 @app.command("compare")

@@ -70,6 +70,19 @@ PRICES: dict[str, tuple[float, float]] = {
     "claude-sonnet-4-6": (3.0, 15.0),
     "claude-haiku-5-5": (0.10, 0.50),
     "claude-haiku-4-5": (1.0, 5.0),
+    # Google — ai.google.dev/gemini-api/docs/pricing, paid tier, ≤200k (page dated 2026-10-09)
+    "gemini-3.8-flash": (0.75, 3.75),
+    "gemini-3.6-flash": (0.75, 3.75),
+    "gemini-3.5-flash-lite": (0.30, 2.50),
+    "gemini-3.1-flash-lite": (0.25, 1.50),
+    "gemini-3.1-pro-preview": (2.00, 12.00),
+    "gemini-3-flash-preview": (0.50, 3.00),
+    "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
+    # OpenAI: the published lineup changes often and the pricing page could not be read
+    # by the tooling; add rows under `prices:` in evalstone.yaml (the gate warns when
+    # a judge model is unpriced and max_cost_usd is set).
 }
 
 
@@ -86,7 +99,13 @@ def price(
 # ── registry ──────────────────────────────────────────────────────────────────
 
 
+ADAPTERS = ("openai", "anthropic", "gemini")
+
+
 class ProviderConfig(BaseModel):
+    # Which built-in adapter speaks to this provider; defaults to the entry's name, so
+    # `openrouter: {adapter: openai, base_url: …}` and `openai: {…}` can coexist.
+    adapter: str | None = None
     base_url: str | None = None
     api_key_env: str | None = None
     api_key: str | None = Field(default=None, exclude=True, repr=False)
@@ -123,6 +142,7 @@ class Providers:
             for k, v in (config or {}).items()
         }
         self.default_model = default_model
+        self.override_model: str | None = None  # wins over every judge's model when set
         self.prices = dict(prices or {})
         self._instances: dict[str, Provider] = {}
 
@@ -139,7 +159,7 @@ class Providers:
         self._instances.clear()
 
     def split(self, model: str | None) -> tuple[str, str]:
-        model = model or self.default_model
+        model = self.override_model or model or self.default_model
         if not model:
             raise ProviderError("no model given and no judges.default_model configured")
         if "/" not in model:
@@ -150,6 +170,29 @@ class Providers:
     def get(self, name: str) -> Provider:
         if name in self._instances:
             return self._instances[name]
+        cfg = self.config.get(name)
+        adapter = cfg.adapter if cfg and cfg.adapter else name
+        if cfg is None and name not in ADAPTERS:
+            known = sorted(set(ADAPTERS) | set(self.config))
+            raise ProviderError(f"unknown provider {name!r} (known: {', '.join(known)})")
+        cfg = cfg or ProviderConfig()
+        if adapter == "openai":
+            from evalstone.providers.openai_compat import OpenAICompatProvider
+
+            self._instances[name] = OpenAICompatProvider(cfg, prices=self.prices)
+        elif adapter == "anthropic":
+            from evalstone.providers.anthropic_ import AnthropicProvider
+
+            self._instances[name] = AnthropicProvider(cfg, prices=self.prices)
+        elif adapter == "gemini":
+            from evalstone.providers.gemini import GeminiProvider
+
+            self._instances[name] = GeminiProvider(cfg, prices=self.prices)
+        else:
+            raise ProviderError(
+                f"provider {name!r}: unknown adapter {adapter!r} (adapters: {', '.join(ADAPTERS)})"
+            )
+        return self._instances[name]
         cfg = self.config.get(name, ProviderConfig())
         if name == "openai":
             from evalstone.providers.openai_compat import OpenAICompatProvider

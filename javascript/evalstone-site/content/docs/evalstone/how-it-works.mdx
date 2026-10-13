@@ -120,10 +120,12 @@ Rules that hold for every adapter:
 
 These do not judge quality; they catch the contract failures that break
 production, exactly and for free. Deterministic and trajectory checks are
-sorted before the judges in every suite; safety rules and human labels are not
-sorted and keep their declared position among the judges. Every check still
-runs for every sample, so a
-judge is spent on an output whether or not a contract check failed it. The
+sorted before the judges in every suite, and so are safety rules and human
+labels (everything that costs nothing). By default every check still runs for
+every sample, so a judge is spent on an output whether or not a contract check
+failed it; `short_circuit: true` on a suite skips the judges for a sample a
+contract check already failed (recorded as a skipped failure, never an error),
+so no paid call is spent on it. The
 quickstart's
 first run is exactly this: recorded outputs, deterministic checks, a gate.
 Nothing is called, nothing costs money, and the result is the same every time.

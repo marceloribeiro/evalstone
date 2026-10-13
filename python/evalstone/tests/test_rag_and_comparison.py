@@ -166,8 +166,11 @@ def test_config_resolves_dotted_check_types(tmp_path):
         "bounded": "trajectory",
         "better": "comparison",
     }
-    # cheap kinds first: trajectory, then safety/judge/comparison in declared order
-    assert suite.check_keys[:3] == ["looked_up", "ordered", "bounded"]
+    # cheap kinds first (safety and trajectory, declared order), then judge/comparison
+    assert suite.check_keys[:6] == ["refuse", "clean", "banned", "looked_up", "ordered", "bounded"]
+    assert suite.check_keys[6:] == [
+        k for k in suite.check_keys[6:] if kinds[k] in ("judge", "comparison")
+    ]
     assert comparison.pairwise is pairwise
 
 

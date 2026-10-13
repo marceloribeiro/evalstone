@@ -2,6 +2,28 @@
 
 All notable changes to `python/evalstone`. Semantic versioning; tags `lib-vX.Y.Z`.
 
+## 0.1.1 — unreleased
+
+Judge switching and cost honesty.
+
+- **Named providers**: a `providers:` entry may name any adapter (`adapter:
+  openai | anthropic | gemini`), so `openrouter:`, `ollama:` and `openai:` can
+  coexist and a judge model reads `openrouter/anthropic/claude-haiku-5-5`.
+  Unknown provider names and adapters are reported with the known ones.
+- **`--judge-model provider/model`** on `evalstone run` and `gate` overrides
+  every judge's model for that run (`Providers.override_model`;
+  `Config.context(judge_model=…)`): the same suite, a different judge.
+- **`short_circuit: true`** on a suite skips the judge checks on a sample that
+  a contract check (deterministic, safety, trajectory, human) already failed.
+  The skipped result is a failure, not an error (`Score.skipped`,
+  `RunSummary.skipped`), so no paid call is spent on an output that already
+  failed and the error-rate gate is not tripped. Off by default.
+- **Cheap-first ordering** now includes safety rules and human labels, not only
+  deterministic and trajectory checks.
+- **Gate**: with `max_cost_usd` set, a `WARN` line counts results from models
+  outside the price table (they count as $0). Gemini models priced from the
+  official table (2026-10-09); OpenAI models are set under `prices:`.
+
 ## 0.1.0 — 2026-10-13
 
 The first usable release: the hero path from `evalstone.yaml` to a gated run.

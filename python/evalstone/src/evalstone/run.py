@@ -44,6 +44,7 @@ class CheckSummary(BaseModel):
     n: int
     passed: int
     errors: int
+    skipped: int = 0  # short-circuited judge results (failures that cost nothing)
     pass_rate: float
     mean_score: float
     cost_usd: float
@@ -55,6 +56,7 @@ class RunSummary(BaseModel):
     results: int
     passed: int
     errors: int
+    skipped: int = 0  # short-circuited judge results (failures that cost nothing)
     pass_rate: float
     mean_score: float
     error_rate: float
@@ -70,6 +72,7 @@ def summarise(
     n = len(results)
     passed = sum(r.score.passed for r in results)
     errors = sum(r.score.error is not None for r in results)
+    skipped = sum(r.score.skipped for r in results)
     cost = sum(r.score.cost_usd for r in results) + sum(
         o.cost_usd for o in {r.sample_id: r.output for r in results}.values()
     )
@@ -97,6 +100,7 @@ def summarise(
         results=n,
         passed=passed,
         errors=errors,
+        skipped=skipped,
         pass_rate=passed / n if n else 0.0,
         mean_score=sum(r.score.value for r in results) / n if n else 0.0,
         error_rate=errors / n if n else 0.0,

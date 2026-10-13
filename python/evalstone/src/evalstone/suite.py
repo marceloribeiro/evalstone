@@ -16,7 +16,8 @@ from evalstone.run import Result, Run, summarise
 from evalstone.score import Check, CheckKind, Context, Score
 from evalstone.target import CallableTarget, Target
 
-_CHEAP = {CheckKind.DETERMINISTIC, CheckKind.TRAJECTORY}
+# Checks that cost nothing to run: sorted before the model-backed ones (judge, comparison).
+_CHEAP = {CheckKind.DETERMINISTIC, CheckKind.TRAJECTORY, CheckKind.SAFETY, CheckKind.HUMAN}
 
 
 class Suite:
@@ -28,6 +29,7 @@ class Suite:
         checks: Iterable[Check | str],
         gate: Gate | None = None,
         cheap_first: bool = True,
+        short_circuit: bool = False,
     ) -> None:
         self.name = name
         self.dataset = dataset
@@ -42,6 +44,7 @@ class Suite:
             resolved.sort(key=lambda c: 0 if c.kind in _CHEAP else 1)
         self.checks: list[Check] = resolved
         self.gate = gate
+        self.short_circuit = short_circuit
 
     @property
     def check_keys(self) -> list[str]:
@@ -71,14 +74,20 @@ class Suite:
                 output = tgt.produce(sample)
             except Exception as exc:
                 output = Output.failed(f"{type(exc).__name__}: {exc}")
+            contract_failed: str | None = None  # the first cheap check that failed this sample
             for chk in self.checks:
                 if output.error is not None:
                     score = Score.errored(f"target: {output.error}")
+                elif self.short_circuit and contract_failed and chk.kind not in _CHEAP:
+                    # a paid judge call is not spent on an output that already failed
+                    score = Score.skip(f"skipped: {contract_failed} failed this output")
                 else:
                     try:
                         score = chk.evaluate(sample, output, run_ctx)
                     except Exception as exc:
                         score = Score.errored(f"{type(exc).__name__}: {exc}")
+                    if chk.kind in _CHEAP and not score.passed and score.error is None:
+                        contract_failed = contract_failed or chk.key
                 results.append(
                     Result(
                         sample_id=sample.id,
