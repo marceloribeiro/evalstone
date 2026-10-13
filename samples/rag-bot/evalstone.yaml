@@ -18,6 +18,11 @@ suites:
     target: { kind: callable, fn: "bot:answer" }
     checks: [must_include, short, no_apology, one_sentence]
     gate: { min_pass_rate: 0.9 }
+  ci:                          # what the GitHub Action runs on this repo's PRs: the
+    dataset: golden            # deterministic checks with a gate the bot clears today;
+    target: { kind: callable, fn: "bot:answer" }   # `nightly` keeps the stricter 90% bar
+    checks: [must_include, short, no_apology, one_sentence]
+    gate: { min_pass_rate: 0.85, max_error_rate: 0 }
   judged:                      # deterministic checks + an LLM judge; needs ANTHROPIC_API_KEY
     dataset: golden
     target: { kind: callable, fn: "bot:answer" }

@@ -167,6 +167,58 @@ class Run(BaseModel):
         )
         return "\n".join(rows)
 
+    def markdown(self, *, failures: int = 20, title: str | None = None) -> str:
+        """A GitHub-flavoured markdown report: verdict, per-check table, failures."""
+        s = self.summary
+        verdict = (
+            "✅ gate passed"
+            if self.gate_passed
+            else "❌ gate failed"
+            if self.gate_passed is False
+            else "no gate"
+        )
+        head = title or f"Evalstone · `{self.suite}`"
+        lines = [
+            f"### {head} — {verdict}",
+            "",
+            f"`{self.dataset}@{self.dataset_hash[:12]}` · {s.samples} samples · "
+            f"pass **{s.pass_rate:.1%}** · mean {s.mean_score:.3f} · errors {s.errors} · "
+            f"cost ${s.cost_usd:.4f} · {s.duration_ms / 1000:.1f}s"
+            + (f" · `{self.git_sha[:8]}`" if self.git_sha else ""),
+            "",
+            "| check | n | pass | mean | errors |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+        for c in s.per_check:
+            lines.append(
+                f"| `{c.key}` | {c.n} | {c.pass_rate:.1%} | {c.mean_score:.3f} | {c.errors} |"
+            )
+        if self.gate_lines:
+            lines += ["", "<details><summary>gate</summary>", "", "```"]
+            lines += self.gate_lines
+            lines += ["```", "", "</details>"]
+        failing = self.failures()
+        if failing:
+            shown = failing[:failures]
+            lines += [
+                "",
+                f"<details><summary>{len(failing)} failing result(s)"
+                + (f", first {len(shown)}" if len(failing) > len(shown) else "")
+                + "</summary>",
+                "",
+                "| sample | check | value | reason |",
+                "| --- | --- | ---: | --- |",
+            ]
+            for r in shown:
+                reason = (r.score.reason or r.score.error or "").replace("|", "\\|")
+                flag = "⚠️ " if r.score.error else ""
+                lines.append(
+                    f"| `{r.sample_id}` | `{r.check_key}` | {r.score.value:.2f} | {flag}{reason} |"
+                )
+            lines += ["", "</details>"]
+        lines += ["", f"<sub>run `{self.id}` · evalstone</sub>"]
+        return "\n".join(lines)
+
     @staticmethod
     def now() -> datetime:
         return datetime.now(UTC)

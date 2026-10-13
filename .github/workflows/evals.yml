@@ -1,0 +1,28 @@
+name: Evals (dogfood)
+
+# Runs the rag-bot sample's `ci` suite through the Evalstone action on every PR
+# that touches the library, the sample or the action — the action evaluating itself.
+
+on:
+  pull_request:
+    paths:
+      - "python/evalstone/**"
+      - "samples/rag-bot/**"
+      - "action/**"
+      - ".github/workflows/evals.yml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  rag-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./action
+        with:
+          suite: ci
+          working-directory: samples/rag-bot
+          install: "../../python/evalstone"
+          python-version: "3.13"

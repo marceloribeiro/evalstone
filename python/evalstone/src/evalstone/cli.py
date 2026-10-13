@@ -161,10 +161,16 @@ def compare_cmd(a: Path, b: Path) -> None:
     raise typer.Exit(1 if cmp.regressions else 0)
 
 
+MarkdownOpt = typer.Option(False, "--markdown", help="Print GitHub-flavoured markdown instead")
+
+
 @app.command()
-def show(report: Path, failures: int = FailuresOpt) -> None:
-    """Print a saved report."""
+def show(report: Path, failures: int = FailuresOpt, markdown: bool = MarkdownOpt) -> None:
+    """Print a saved report (as a table, or as markdown for a PR comment)."""
     r = _load_run(report)
+    if markdown:
+        typer.echo(r.markdown(failures=failures))
+        return
     console.print(_run_table(r))
     _print_failures(r, failures)
     _print_gate(r)

@@ -177,3 +177,16 @@ def test_from_json_accepts_text_and_to_json_creates_parents(tmp_path):
     target_path = tmp_path / "reports" / "nested" / "r.json"
     run.to_json(target_path)
     assert target_path.exists() and Run.from_json(target_path).id == run.id
+
+
+def test_markdown_report_has_verdict_table_gate_and_failures():
+    suite = make_suite(Gate(min_pass_rate=0.9))
+    run = suite.run(RecordedTarget({**GOOD, "b": "No | idea."}))
+    md = run.markdown(failures=1)
+    assert md.startswith("### Evalstone · `support` — ❌ gate failed")
+    assert "| `contains` |" in md and "FAIL pass rate" in md
+    assert "1 failing result(s)" in md and "| `b` | `contains` | 0.00 | missing" in md
+    assert "No \\| idea" not in md  # reasons are escaped, outputs are not shown
+    assert run.markdown(title="Custom").startswith("### Custom")
+    ok = make_suite().run(RecordedTarget(GOOD)).markdown()
+    assert "no gate" in ok and "failing" not in ok

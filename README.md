@@ -41,6 +41,7 @@ no database; the center API is the sole owner of PostgreSQL.
 | [`python/evalstone/`](python/evalstone) | Library · CLI (MCP server + pytest plugin in Phase 2) | Python 3.12+ · pydantic · httpx | **0.1.0 candidate** (PyPI publish pending) |
 | `python/evalstone-api/` | The center API (sole database owner) | FastAPI · SQLAlchemy 2 · PostgreSQL 16 + pgvector · Redis · Celery | planned |
 | `javascript/evalstone-web/` | The center web app | Next.js 16 · React 19 · Tailwind 4 · shadcn | planned |
+| [`action/`](action) | GitHub Action: run a suite on PRs, comment, fail on the gate | composite action | **live** (dogfooded by `evals.yml`) |
 | [`docs/`](docs) | Architecture, roadmap, decisions | Markdown | — |
 | `samples/` | Runnable examples | — | with the library |
 

@@ -123,3 +123,13 @@ def test_init_never_overwrites_and_quotes_the_project_name(in_dir):
     assert res.exit_code == 0, res.output
     assert runner.invoke(app, ["list"]).exit_code == 0
     assert runner.invoke(app, ["run", "nightly", "--report", "r.json"]).exit_code == 0
+
+
+def test_show_markdown(in_dir):
+    runner.invoke(app, ["init"])
+    runner.invoke(app, ["run", "nightly", "--report", "r.json"])
+    res = runner.invoke(app, ["show", "r.json", "--markdown"])
+    assert res.exit_code == 0 and res.output.startswith(
+        "### Evalstone · `nightly` — ✅ gate passed"
+    )
+    assert "| `must_include` |" in res.output
