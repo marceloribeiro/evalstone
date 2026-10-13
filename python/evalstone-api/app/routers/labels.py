@@ -86,8 +86,8 @@ def push_labels(
     db: Session = Depends(get_db),
 ):
     """Upsert labels (a labels.jsonl); later wins per (sample, output, check)."""
-    n = label_svc.upsert(db, project=actor.project, labels=body.labels, labeler_user=actor.user)
-    return {"upserted": n}
+    ids = label_svc.upsert(db, project=actor.project, labels=body.labels, labeler_user=actor.user)
+    return {"upserted": len(ids)}
 
 
 @router.get(_labels + "/export")

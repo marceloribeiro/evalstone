@@ -33,14 +33,15 @@ def _aware(dt: datetime) -> datetime:
 
 def upsert(
     db: Session, *, project: Project, labels: list[LibLabel], labeler_user: User | None
-) -> int:
+) -> list[uuid.UUID]:
     """Later wins for the same (sample, output, check) — the library's LabelStore rule.
 
-    A re-push also revives a soft-deleted label for the same key.
+    A re-push also revives a soft-deleted label for the same key. Returns the ids of the
+    rows written, in the order of the (deduplicated) input.
     """
     _check_lengths(labels)
     if not labels:
-        return 0
+        return []
     last: dict[tuple[str, str, str], LibLabel] = {}
     for lb in labels:
         last[(lb.sample_id, lb.output_hash, lb.check or "")] = lb  # dedupe within the push
@@ -81,9 +82,12 @@ def upsert(
             "updated_at": func.now(),
         },
     )
-    db.execute(stmt)
+    rows = db.execute(
+        stmt.returning(Label.id, Label.sample_key, Label.output_hash, Label.check_key)
+    ).all()
     db.commit()
-    return len(values)
+    by_key = {(r.sample_key, r.output_hash, r.check_key): r.id for r in rows}
+    return [by_key[(v["sample_key"], v["output_hash"], v["check_key"])] for v in values]
 
 
 def list_labels(
