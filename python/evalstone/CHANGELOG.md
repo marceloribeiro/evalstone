@@ -2,7 +2,7 @@
 
 All notable changes to `python/evalstone`. Semantic versioning; tags `lib-vX.Y.Z`.
 
-## 0.1.1 — unreleased
+## 0.1.1 — 2026-10-13
 
 Judge switching and cost honesty.
 
