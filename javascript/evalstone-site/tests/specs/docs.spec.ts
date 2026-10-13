@@ -40,9 +40,9 @@ test.describe('Learning center', () => {
   test('Evalstone pages state their status honestly', async ({ page }) => {
     const docs = new DocsPage(page);
     await docs.goto('/evalstone/how-it-works');
-    await expect(page.getByText('In the repository', { exact: true })).toBeVisible();
+    await expect(page.getByText('Released', { exact: true })).toBeVisible();
     await docs.goto('/evalstone/library');
-    await expect(page.getByText('Not yet released')).toBeVisible();
+    await expect(page.getByText('Released', { exact: true })).toBeVisible();
     await docs.goto('/evalstone/center');
     await expect(page.getByText('Planned', { exact: true })).toBeVisible();
   });

@@ -28,8 +28,8 @@ evalstone gate nightly                   # exit 1 when the gate fails (CI)
 ```
 
 A fuller example — a small retrieval bot with a gated suite — lives in the
-repository under `samples/rag-bot` (`git clone` it, `pip install -e
-python/evalstone`, then `evalstone run nightly` inside the sample).
+repository under `samples/rag-bot` (`git clone` it, then `evalstone run nightly`
+inside the sample).
 
 Judges and prompt targets need a provider key in the environment
 (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, or any

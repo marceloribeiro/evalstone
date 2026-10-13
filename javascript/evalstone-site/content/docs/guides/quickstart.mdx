@@ -4,10 +4,8 @@ description: From nothing to a gated eval run in ten minutes, no model key requi
 ---
 
 <Callout type="info" title="Install">
-  Until 0.1.0 is on PyPI, install from the repository:
-  `git clone https://github.com/marceloribeiro/evalstone && pip install -e "evalstone/python/evalstone[anthropic]"`
-  (the `[anthropic]` extra is what step 5's judge needs). Afterwards it is
-  `pip install "evalstone[anthropic]"`.
+  `pip install "evalstone[anthropic]"` — Python 3.12+. The `[anthropic]` extra
+  is what step 5's judge needs; everything before it runs with no model.
 </Callout>
 
 ## 1. Scaffold a project
