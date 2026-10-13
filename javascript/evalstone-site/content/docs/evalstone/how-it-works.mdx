@@ -1,6 +1,6 @@
 ---
 title: How it works
-description: The judge measures quality with your model; human labels are the ground truth; deterministic checks guard the contracts. How each reaches a provider.
+description: Judges measure quality with your model, humans are the ground truth, deterministic checks guard the contracts.
 ---
 
 <Callout type="info" title="Released">
@@ -120,8 +120,9 @@ Rules that hold for every adapter:
 
 These do not judge quality; they catch the contract failures that break
 production, exactly and for free. Deterministic and trajectory checks are
-sorted before the judges in every suite (safety rules and human labels run in
-declaration order with them); every check still runs for every sample, so a
+sorted before the judges in every suite; safety rules and human labels are not
+sorted and keep their declared position among the judges. Every check still
+runs for every sample, so a
 judge is spent on an output whether or not a contract check failed it. The
 quickstart's
 first run is exactly this: recorded outputs, deterministic checks, a gate.

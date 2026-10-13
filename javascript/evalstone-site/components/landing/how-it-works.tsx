@@ -23,7 +23,7 @@ const STEPS = [
   },
   {
     title: 'Run it anywhere',
-    body: 'evalstone run on your laptop, in pytest, in a GitHub Action, or from an MCP client. The judge scores quality with the model you name, on your key; the exact, free checks run before it in every suite.',
+    body: 'evalstone run on your laptop, in pytest, in a GitHub Action, or from an MCP client. The judge scores quality with the model you name, on your key; deterministic and trajectory checks run before it in every suite.',
   },
   {
     title: 'Keep the history',

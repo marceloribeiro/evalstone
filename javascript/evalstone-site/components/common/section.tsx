@@ -14,7 +14,7 @@ export function Section({ id, eyebrow, title, lead, children, tone = 'default' }
   return (
     <section
       id={id}
-      className={`py-16 sm:py-24 ${tone === 'muted' ? 'bg-fd-muted/60' : ''}`}
+      className={`scroll-mt-14 py-16 sm:py-24 ${tone === 'muted' ? 'bg-fd-muted/60' : ''}`}
       aria-labelledby={id ? `${id}-title` : undefined}
     >
       <Container>

@@ -21,7 +21,7 @@ const JUDGE = [
   'A rubric on a small scale, graded by the model you name; the verdict is a level and a reason, as JSON',
   'rag.faithfulness, rag.context_relevance, rag.answer_relevance: judges with fixed rubrics',
   'comparison.pairwise: which of two outputs is better, both orders, so position bias cancels',
-  'Measured against human labels: a judge you have not checked is an opinion (the agreement report is center work)',
+  'Measured against human labels: a judge you have not checked is an opinion (the agreement report is on the roadmap, in Evalstone Center)',
   'No key, a refusal, malformed JSON: an error, never a pass, and the gate fails on error rate',
 ];
 
@@ -81,7 +81,7 @@ export function ModelOrNot() {
       }
     >
       <div className="grid gap-8 lg:grid-cols-2">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <BulletCard
             kicker="1 · the quality signal"
             title="LLM-as-judge, with your model"
@@ -97,7 +97,7 @@ export function ModelOrNot() {
             dot="bg-fd-foreground/50"
           />
         </div>
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <CodePanel title="evalstone.yaml" code={YAML} />
           <p className="text-sm leading-relaxed text-fd-muted-foreground">
             Three native adapters: <code>anthropic</code> through the official SDK, <code>gemini</code>{' '}

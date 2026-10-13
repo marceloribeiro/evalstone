@@ -38,23 +38,61 @@ test.describe('Landing page', () => {
     await expect(page).toHaveURL(/\/docs\/evalstone\/how-it-works$/);
   });
 
-  test('the top nav reaches every section of the docs', async ({ page }) => {
+  test('the top nav walks the sections of this page, and reaches the docs', async ({ page }) => {
     const home = new HomePage(page);
-    await home.goto();
-    for (const [name, path, heading] of [
-      ['Learn evals', '/docs/learn', 'Evals 101'],
-      ['How it works', '/docs/evalstone/how-it-works', 'How it works'],
-      ['Evalstone', '/docs/evalstone', 'How Evalstone helps'],
-      ['Guides', '/docs/guides/quickstart', 'Quickstart'],
-      ['Reference', '/docs/reference/cli', 'CLI'],
+    for (const [name, id] of [
+      ['Problem', 'problem'],
+      ['Evals', 'what-are-evals'],
+      ['How it helps', 'how-it-helps'],
+      ['How it works', 'how-it-works'],
+      ['Model', 'model-or-not'],
+      ['Learn', 'learn'],
     ] as const) {
       await home.goto();
-      const link = page.locator(`header a[href="${path}"]:visible`).first();
+      const link = page.locator(`header a[href="/#${id}"]:visible`).first();
       await expect(link).toHaveText(name);
       await link.click();
-      await expect(page).toHaveURL(new RegExp(`${path.replace(/\//g, '\\/')}$`));
-      await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
+      await expect(page).toHaveURL(new RegExp(`/#${id}$`));
+      const box = await home.section(id).boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.y).toBeGreaterThanOrEqual(0); // not hidden under the sticky header
+      expect(box!.y).toBeLessThanOrEqual(64); // and parked right below it
     }
+    await home.goto();
+    await page.locator('header a[href="/docs"]:visible').first().click();
+    await expect(page).toHaveURL(/\/docs$/);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome');
+  });
+
+  test('the header fits at tablet widths without horizontal overflow', async ({ page }) => {
+    // 640–672px (fumadocs shows the links and the menu trigger together there) overflows by
+    // a few pixels of the trigger itself; from 700px up the header must fit.
+    for (const width of [700, 768, 820, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/');
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      expect(overflow, `horizontal overflow at ${width}px`).toBe(false);
+      await expect(page.locator('header a[href="/#learn"]:visible').first()).toBeVisible();
+      await expect(page.locator('header a[href="/docs"]:visible').first()).toBeVisible();
+    }
+  });
+
+  test('a docs page reaches the homepage sections through the Home menu', async ({ page }) => {
+    await page.goto('/docs/guides/quickstart');
+    await page.getByRole('button', { name: 'Home' }).or(page.getByText('Home', { exact: true })).first().click();
+    await page.locator('a[href="/#model-or-not"]:visible').first().click();
+    await expect(page).toHaveURL(/\/#model-or-not$/);
+    await expect(page.locator('#model-or-not')).toBeInViewport();
+  });
+
+  test('a phone sees every section link in the menu', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await page.getByRole('button', { name: /menu/i }).click();
+    for (const id of ['problem', 'what-are-evals', 'how-it-helps', 'how-it-works', 'model-or-not', 'learn']) {
+      await expect(page.locator(`a[href="/#${id}"]:visible`).first()).toBeVisible();
+    }
+    await expect(page.locator('a[href="/docs"]:visible').first()).toBeVisible();
   });
 
   test('the learning CTA opens Evals 101', async ({ page }) => {
