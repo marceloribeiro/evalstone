@@ -21,6 +21,7 @@ classifiers = [
   "Topic :: Software Development :: Testing",
 ]
 dependencies = [
+  "httpx>=0.28,<1",
   "jsonschema>=4.26,<5",
   "pydantic>=2.14,<3",
 ]
@@ -28,6 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=9.1",
+  "respx>=0.23",
   "ruff>=0.17",
 ]
 
