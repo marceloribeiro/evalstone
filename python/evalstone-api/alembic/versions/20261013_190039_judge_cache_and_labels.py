@@ -48,7 +48,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("project_id", "cache_key", name="uq_judge_cache_key"),
     )
-    op.create_index(op.f("ix_judge_cache_project_id"), "judge_cache", ["project_id"], unique=False)
     op.create_table(
         "labels",
         sa.Column("project_id", sa.UUID(), nullable=False),
@@ -89,13 +88,8 @@ def upgrade() -> None:
             "project_id", "sample_key", "output_hash", "check_key", name="uq_label_sample_output"
         ),
     )
-    op.create_index(op.f("ix_labels_project_id"), "labels", ["project_id"], unique=False)
-    op.create_index(op.f("ix_labels_sample_key"), "labels", ["sample_key"], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_labels_sample_key"), table_name="labels")
-    op.drop_index(op.f("ix_labels_project_id"), table_name="labels")
     op.drop_table("labels")
-    op.drop_index(op.f("ix_judge_cache_project_id"), table_name="judge_cache")
     op.drop_table("judge_cache")

@@ -19,7 +19,9 @@ class JudgeCacheEntry(TimestampedModel):
     __table_args__ = (UniqueConstraint("project_id", "cache_key", name="uq_judge_cache_key"),)
 
     project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True
+        UUID(as_uuid=True),
+        ForeignKey("projects.id"),
+        nullable=False,  # uq_judge_cache_key leads
     )
     cache_key: Mapped[str] = mapped_column(String(64), nullable=False)
     judge_version: Mapped[str | None] = mapped_column(String(16), nullable=True)  # for calibration
@@ -43,9 +45,11 @@ class Label(TimestampedModel):
     )
 
     project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True
+        UUID(as_uuid=True),
+        ForeignKey("projects.id"),
+        nullable=False,  # uq_label_sample_output leads
     )
-    sample_key: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    sample_key: Mapped[str] = mapped_column(String(200), nullable=False)
     output_hash: Mapped[str] = mapped_column(String(16), nullable=False)
     check_key: Mapped[str] = mapped_column(String(200), nullable=False, default="")  # '' = overall
     value: Mapped[float] = mapped_column(Float, nullable=False)

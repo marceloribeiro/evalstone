@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response, status
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -56,7 +56,7 @@ def cache_put(
 ):
     """Store a judge verdict under the library's key: 201 when new, 200 when replaced."""
     row, created = cache_svc.put(
-        db, actor.project, key, body.score.model_dump(), judge_version=body.judge_version
+        db, actor.project, key, body.score, judge_version=body.judge_version
     )
     payload = CacheEntryOut.model_validate(row).model_dump(mode="json")
     return JSONResponse(status_code=201 if created else 200, content=payload)
@@ -86,17 +86,18 @@ def push_labels(
     db: Session = Depends(get_db),
 ):
     """Upsert labels (a labels.jsonl); later wins per (sample, output, check)."""
-    records = [lb.model_dump(exclude_none=True) for lb in body.labels]
-    n = label_svc.upsert(db, project=actor.project, records=records, labeler_user=actor.user)
+    n = label_svc.upsert(db, project=actor.project, labels=body.labels, labeler_user=actor.user)
     return {"upserted": n}
 
 
-@router.get(_labels + "/export", response_class=PlainTextResponse)
+@router.get(_labels + "/export")
 def export_labels(actor: ProjectActor = Depends(get_project_actor), db: Session = Depends(get_db)):
-    """Every live label as JSONL — a drop-in `labels.jsonl` for the standalone `human` check."""
-    rows, _ = label_svc.list_labels(db, actor.project, limit=100_000)
-    lines = [label_svc.to_library(r).model_dump_json() for r in reversed(rows)]
-    return PlainTextResponse("\n".join(lines) + ("\n" if lines else ""))
+    """Every live label as NDJSON, streamed — a drop-in `labels.jsonl` for the `human` check."""
+    return StreamingResponse(
+        label_svc.iter_export(db, actor.project),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": 'attachment; filename="labels.jsonl"'},
+    )
 
 
 @router.get(_labels + "/lookup", response_model=LabelOut)

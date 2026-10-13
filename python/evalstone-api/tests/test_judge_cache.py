@@ -49,14 +49,64 @@ def test_cache_is_per_project_and_open_to_ingest_keys(client, project, register)
     assert client.get(f"/projects/{other}/judge-cache/{KEY}", headers=h).status_code == 404
 
 
-def test_lookup_cap(db, project):
-    from uuid import UUID
+def test_lookup_cap_is_enforced_at_the_route(client, project):
+    keys = [KEY] * (svc.MAX_LOOKUP_KEYS + 1)
+    r = client.post(_url(project) + "/lookup", json={"keys": keys}, headers=project["headers"])
+    assert r.status_code == 422
 
-    import pytest
 
-    from app.errors import Invalid
-    from app.services import projects as project_service
+# --- regressions from the #30 review ---------------------------------------------------------
 
-    p = project_service.get_project(db, UUID(project["id"]))
-    with pytest.raises(Invalid):
-        svc.lookup(db, p, [KEY] * (svc.MAX_LOOKUP_KEYS + 1))
+
+def test_reput_without_version_keeps_it_and_advances_updated_at(client, project, db):
+    from app.models import JudgeCacheEntry
+
+    h = project["headers"]
+    client.put(_url(project, KEY), json={"score": SCORE, "judge_version": "abc123"}, headers=h)
+    before = db.query(JudgeCacheEntry).one()
+    created_at, updated_at = before.created_at, before.updated_at
+    r = client.put(_url(project, KEY), json={"score": {**SCORE, "value": 0.1}}, headers=h)
+    assert r.status_code == 200 and r.json()["judge_version"] == "abc123"  # not nulled
+    db.expire_all()
+    after = db.query(JudgeCacheEntry).one()
+    assert after.created_at == created_at and after.updated_at > updated_at
+
+
+def test_hits_are_counted_atomically_under_concurrent_reads(client, project):
+    from concurrent.futures import ThreadPoolExecutor
+
+    h = project["headers"]
+    client.put(_url(project, KEY), json={"score": SCORE}, headers=h)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        codes = list(
+            pool.map(lambda _: client.get(_url(project, KEY), headers=h).status_code, range(16))
+        )
+    assert codes == [200] * 16
+    assert client.get(_url(project, KEY), headers=h).json()["hits"] == 17
+
+
+def test_score_body_is_the_library_model(client, project):
+    from app.schemas.labels import CachePutIn
+
+    assert CachePutIn.model_fields["score"].annotation is Score
+    extra = client.put(
+        _url(project, KEY), json={"score": {**SCORE, "bogus": 1}}, headers=project["headers"]
+    )
+    assert extra.status_code == 201  # Score ignores unknown fields like the library does
+
+
+def test_no_redundant_indexes(db):
+    from sqlalchemy import text
+
+    names = {
+        r[0]
+        for r in db.execute(
+            text("select indexname from pg_indexes where tablename in ('labels','judge_cache')")
+        )
+    }
+    assert names == {
+        "labels_pkey",
+        "judge_cache_pkey",
+        "uq_judge_cache_key",
+        "uq_label_sample_output",
+    }

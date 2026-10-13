@@ -2,24 +2,16 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from evalstone.checks.human import Label as LibLabel
+from evalstone.score import Score
 from pydantic import BaseModel, ConfigDict, Field
 
-
-class ScoreIn(BaseModel):
-    """The library's `evalstone.score.Score`."""
-
-    value: float = Field(ge=0.0, le=1.0)
-    passed: bool
-    reason: str = ""
-    cost_usd: float = 0.0
-    latency_ms: float = 0.0
-    error: str | None = None
-    raw: Any = None
-    skipped: bool = False
+from app.services.judge_cache import MAX_LOOKUP_KEYS
+from app.services.labels import MAX_LABELS_PER_PUSH
 
 
 class CachePutIn(BaseModel):
-    score: ScoreIn
+    score: Score  # the library's evalstone.score.Score, verbatim
     judge_version: str | None = Field(default=None, max_length=16)
 
 
@@ -35,25 +27,11 @@ class CacheEntryOut(BaseModel):
 
 
 class CacheLookupIn(BaseModel):
-    keys: list[str] = Field(min_length=1, max_length=1000)
-
-
-class LabelIn(BaseModel):
-    """The library's `evalstone.checks.human.Label` wire shape (a labels.jsonl line)."""
-
-    sample_id: str = Field(min_length=1, max_length=200)
-    output_hash: str = Field(min_length=1, max_length=16)
-    value: float = Field(ge=0.0, le=1.0)
-    passed: bool
-    notes: str = Field(default="", max_length=5000)
-    check: str | None = Field(default=None, max_length=200)
-    labeler: str = Field(default="", max_length=200)
-    created_at: datetime | None = None
-    raw: Any = None
+    keys: list[str] = Field(min_length=1, max_length=MAX_LOOKUP_KEYS)
 
 
 class LabelsPushIn(BaseModel):
-    labels: list[LabelIn] = Field(max_length=5000)
+    labels: list[LibLabel] = Field(max_length=MAX_LABELS_PER_PUSH)  # labels.jsonl lines
 
 
 class LabelOut(BaseModel):
