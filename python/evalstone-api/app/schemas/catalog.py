@@ -10,6 +10,7 @@ class ParamOut(BaseModel):
     required: bool
     default: Any
     annotation: str
+    machine_bound: str | None  # "callable" | "path" | "target": the value lives on a machine
 
 
 class BuiltinOut(BaseModel):
@@ -18,6 +19,7 @@ class BuiltinOut(BaseModel):
     params: list[ParamOut]
     summary: str
     library_version: str
+    storable: bool  # False when a required param can only be a callable or a file
 
 
 class CheckIn(BaseModel):

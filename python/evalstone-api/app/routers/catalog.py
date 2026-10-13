@@ -56,7 +56,11 @@ def get_check(
     return svc.get_check(db, ctx.organization, check_id)
 
 
-@router.put(_org + "/{check_id}", response_model=CheckOut)
+@router.put(
+    _org + "/{check_id}",
+    response_model=CheckOut,
+    responses={201: {"model": CheckOut, "description": "type/params changed: a new version"}},
+)
 def update_check(
     check_id: uuid.UUID,
     body: CheckUpdate,

@@ -17,7 +17,8 @@ def test_builtins_mirror_the_installed_library(client, org):
     names = {p["name"]: p for p in judge["params"]}
     assert names["rubric"]["required"] is True and names["scale"]["default"] == 5
     assert "key" not in names
-    assert rows["rag.faithfulness"]["kind"] == "rag" and rows["exact"]["kind"] == "deterministic"
+    assert rows["rag.faithfulness"]["kind"] == "judge"  # what the library reports (calls a model)
+    assert rows["exact"]["kind"] == "deterministic"
     assert rows["safety.refusal"]["kind"] == "safety"
     assert client.get("/catalog/checks").status_code == 401
 
@@ -59,7 +60,7 @@ def test_create_validates_against_the_factory_signature(client, org):
         json={"key": "x", "type": "human", "params": {"labels": "/etc/passwd"}},
         headers=h,
     )
-    assert server_side.status_code == 422 and "files or code" in server_side.json()["detail"]
+    assert server_side.status_code == 422 and "file on a machine" in server_side.json()["detail"]
     assert (
         client.post(
             _url(org), json={"key": "Bad Key", "type": "exact", "params": {}}, headers=h
@@ -156,3 +157,84 @@ def test_params_size_cap(client, org):
         _url(org), json={"key": "x", "type": "judge", "params": big}, headers=org["headers"]
     )
     assert r.status_code == 422 and "bytes" in r.json()["detail"]
+
+
+# --- regressions from the #34 review ---------------------------------------------------------
+
+
+def test_kinds_and_sentinels_mirror_the_library(client, org):
+    rows = {x["type"]: x for x in client.get("/catalog/checks", headers=org["headers"]).json()}
+    for t in FACTORIES:
+        if t in ("comparison.pairwise", "human", "trajectory.tool_called", "judge"):
+            continue
+        kw = {"rubric": "r"} if rows[t]["kind"] == "judge" else {}
+        try:
+            built = FACTORIES[t](key="k", **kw)
+        except TypeError:
+            continue  # needs a required param
+        assert rows[t]["kind"] == built.kind, t
+    exact = {p["name"]: p for p in rows["exact"]["params"]}
+    assert exact["expected"]["required"] is True and exact["expected"]["default"] is None
+    assert "object at 0x" not in str(rows)  # no sentinel address leaks
+    assert rows["comparison.pairwise"]["storable"] is True  # a plain mapping baseline is fine
+    tc = {p["name"]: p["machine_bound"] for p in rows["trajectory.tool_called"]["params"]}
+    assert tc["args"] == "callable"
+
+
+def test_path_is_a_selector_not_a_file(client, org):
+    h = org["headers"]
+    for t, params in (
+        ("exact", {"expected": "Paris", "path": "answer"}),
+        ("trajectory.finished", {"path": "result"}),
+        ("safety.refusal", {"path": "text"}),
+    ):
+        body = {"key": t.replace(".", "-"), "type": t, "params": params}
+        r = client.post(_url(org), json=body, headers=h)
+        assert r.status_code == 201, (t, r.text)
+
+
+def test_machine_bound_values_are_refused_but_storable_forms_pass(client, org):
+    h = org["headers"]
+    tc = {"key": "tc", "type": "trajectory.tool_called"}
+    r = client.post(
+        _url(org), json={**tc, "params": {"name": "s", "args": "notcallable"}}, headers=h
+    )
+    assert r.status_code == 422 and "callable" in r.json()["detail"]
+    assert (
+        client.post(_url(org), json={**tc, "params": {"name": "s"}}, headers=h).status_code == 201
+    )
+    pw = {"key": "pw", "type": "comparison.pairwise"}
+    spec = {"rubric": "r", "baseline": {"kind": "callable", "fn": "x.y"}}
+    r = client.post(_url(org), json={**pw, "params": spec}, headers=h)
+    assert r.status_code == 422 and "target spec" in r.json()["detail"]
+    mapping = {"rubric": "r", "baseline": {"s1": "base answer"}}
+    assert client.post(_url(org), json={**pw, "params": mapping}, headers=h).status_code == 201
+    hc = {"key": "hc", "type": "human", "params": {"labels": "center"}}
+    assert client.post(_url(org), json=hc, headers=h).status_code == 201
+
+
+def test_concurrent_edits_become_consecutive_versions(client, org):
+    from concurrent.futures import ThreadPoolExecutor
+
+    h = org["headers"]
+    body = {"key": "c", "type": "judge", "params": {"rubric": "v1"}}
+    cid = client.post(_url(org), json=body, headers=h).json()["id"]
+
+    def edit(i):
+        params = {"params": {"rubric": f"edit-{i}"}}
+        return client.put(f"{_url(org)}/{cid}", json=params, headers=h).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes = sorted(pool.map(edit, range(2)))
+    assert codes == [201, 201], codes
+    versions = client.get(f"{_url(org)}/{cid}/versions", headers=h).json()
+    assert [v["version"] for v in versions] == [1, 2, 3]
+
+
+def test_note_without_a_content_change_is_422(client, org):
+    h = org["headers"]
+    body = {"key": "c", "type": "judge", "params": {"rubric": "v1"}}
+    cid = client.post(_url(org), json=body, headers=h).json()["id"]
+    r = client.put(f"{_url(org)}/{cid}", json={"description": "d", "note": "why"}, headers=h)
+    assert r.status_code == 422 and "nothing changed" in r.json()["detail"]
+    assert client.put(f"{_url(org)}/{cid}", json={"description": "d"}, headers=h).status_code == 200
