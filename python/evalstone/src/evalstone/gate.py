@@ -67,7 +67,7 @@ class Gate(BaseModel):
                 s.cost_usd <= self.max_cost_usd,
                 f"cost ${s.cost_usd:.4f} ≤ ${self.max_cost_usd:.4f}",
             )
-            unpriced = sum(1 for r in run.results if _unpriced(r))
+            unpriced = _unpriced_calls(run)
             if unpriced:
                 lines.append(
                     f"WARN {unpriced} result(s) from an unpriced model counted as $0 "
@@ -90,10 +90,18 @@ class Gate(BaseModel):
 __all__ = ["Gate", "GateFailed", "GateReport"]
 
 
-def _unpriced(result: Any) -> bool:
-    """A judge or prompt-target call whose model is not in the price table."""
-    raw = result.score.raw
-    if isinstance(raw, dict) and raw.get("unpriced"):
-        return True
-    meta = getattr(result.output, "metadata", None)
-    return isinstance(meta, dict) and bool(meta.get("unpriced"))
+def _unpriced_calls(run: Any) -> int:
+    """Calls whose model is not in the price table: one per judge/comparison result
+    flagged ``unpriced``, plus one per sample whose target call was (the output is
+    shared by every check of that sample, so it is counted once)."""
+    judged = 0
+    for r in run.results:
+        raw = r.score.raw
+        if isinstance(raw, dict) and raw.get("unpriced"):
+            judged += 1
+    targets = 0
+    for output in {r.sample_id: r.output for r in run.results}.values():
+        meta = getattr(output, "metadata", None)
+        if isinstance(meta, dict) and meta.get("unpriced"):
+            targets += 1
+    return judged + targets

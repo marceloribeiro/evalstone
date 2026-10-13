@@ -18,6 +18,9 @@ from evalstone.target import CallableTarget, Target
 
 # Checks that cost nothing to run: sorted before the model-backed ones (judge, comparison).
 _CHEAP = {CheckKind.DETERMINISTIC, CheckKind.TRAJECTORY, CheckKind.SAFETY, CheckKind.HUMAN}
+# Contracts: a failure here short-circuits the judges. A human label is a quality verdict,
+# not a contract — the judge still runs, so judge/human agreement stays measurable.
+_CONTRACTS = {CheckKind.DETERMINISTIC, CheckKind.TRAJECTORY, CheckKind.SAFETY}
 
 
 class Suite:
@@ -86,7 +89,7 @@ class Suite:
                         score = chk.evaluate(sample, output, run_ctx)
                     except Exception as exc:
                         score = Score.errored(f"{type(exc).__name__}: {exc}")
-                    if chk.kind in _CHEAP and not score.passed and score.error is None:
+                    if chk.kind in _CONTRACTS and not score.passed and score.error is None:
                         contract_failed = contract_failed or chk.key
                 results.append(
                     Result(

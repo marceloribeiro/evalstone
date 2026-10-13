@@ -87,13 +87,11 @@ class Config(BaseModel):
     def context(self, *, judge_model: str | None = None) -> Context:
         """The run context: model access for judges and prompt targets, plus a judge cache.
 
-        ``judge_model`` overrides every judge's model for this registry (the CLI's
-        ``--judge-model``): the same suite, a different judge, one flag.
+        ``judge_model`` overrides every judge's model for this context only (the
+        CLI's ``--judge-model``) — judges and pairwise comparisons, never the target
+        under test: the same suite, a different judge, one flag.
         """
-        registry = self.provider_registry()
-        if judge_model is not None:
-            registry.override_model = judge_model
-        return Context(providers=registry)
+        return Context(providers=self.provider_registry(), judge_model=judge_model)
 
     # ── loading ──────────────────────────────────────────────────────────
 

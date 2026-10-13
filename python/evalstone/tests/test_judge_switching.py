@@ -118,8 +118,10 @@ def test_unknown_provider_and_adapter_are_named():
         raise AssertionError("expected ProviderError")
 
 
-def test_override_model_wins_over_every_judge(tmp_path, monkeypatch):
-    """`--judge-model` re-routes the judge even when the check names its own model."""
+def test_judge_model_override_reroutes_judges_but_never_the_target():
+    """`--judge-model` swaps the judge's model, even one named on the check; the prompt
+    target (the system under test) keeps its own model, and the override lives on the
+    Context, not on the shared registry."""
     seen: list[str] = []
 
     class Recorder:
@@ -127,25 +129,39 @@ def test_override_model_wins_over_every_judge(tmp_path, monkeypatch):
 
         def complete(self, request):
             seen.append(request.model)
-            return ChatResponse(
-                text='{"score": 5, "reason": "fine"}',
-                model=request.model,
-                input_tokens=1,
-                output_tokens=1,
+            text = (
+                '{"score": 5, "reason": "fine"}' if "RUBRIC" in (request.system or "") else "answer"
             )
+            return ChatResponse(text=text, model=request.model, input_tokens=1, output_tokens=1)
 
-    providers = Providers(default_model="anthropic/claude-haiku-5-5")
+    providers = Providers(default_model="fake/judge-a")
     providers.register("fake", Recorder())
-    providers.override_model = "fake/judge-b"
-    assert providers.split("anthropic/claude-haiku-5-5") == ("fake", "judge-b")
     from evalstone.checks.judge import judge
+    from evalstone.target import PromptTarget
 
-    chk = judge("quality", "Is it good?", model="anthropic/claude-opus-5-5")
-    score = chk.evaluate(SAMPLES[0], Output(value="within 30 days"), Context(providers=providers))
-    assert score.passed and seen == ["judge-b"]
+    target = PromptTarget(template="{input}", model="fake/under-test", providers=providers)
+    chk = judge("quality", "Is it good?", model="fake/judge-a")
+    ctx = Context(providers=providers, judge_model="fake/judge-b")
+    out = target.produce(SAMPLES[0])
+    score = chk.evaluate(SAMPLES[0], out, ctx)
+    assert score.passed and seen == ["under-test", "judge-b"]
+    assert providers.split("fake/judge-a") == ("fake", "judge-a")  # the registry is untouched
+    assert Context(providers=providers).judge_model is None
 
 
-def test_cli_accepts_judge_model_and_passes_it_to_the_context(tmp_path, monkeypatch):
+def test_context_override_does_not_leak_between_calls(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from typer.testing import CliRunner
+
+    from evalstone.cli import app
+
+    assert CliRunner().invoke(app, ["init"]).exit_code == 0
+    cfg = Config.load(tmp_path)
+    assert cfg.context(judge_model="openai/b").judge_model == "openai/b"
+    assert cfg.context().judge_model is None
+
+
+def test_cli_validates_judge_model_before_running(tmp_path, monkeypatch):
     from typer.testing import CliRunner
 
     from evalstone.cli import app
@@ -160,11 +176,19 @@ def test_cli_accepts_judge_model_and_passes_it_to_the_context(tmp_path, monkeypa
         return original(self, judge_model=judge_model)
 
     monkeypatch.setattr(Config, "context", spy)
-    res = CliRunner().invoke(app, ["run", "nightly", "--judge-model", "openrouter/x/y"])
+    res = CliRunner().invoke(app, ["run", "nightly", "--judge-model", "openai/judge-b"])
     assert res.exit_code == 0, res.output
-    assert captured["judge_model"] == "openrouter/x/y"
-    res = CliRunner().invoke(app, ["gate", "nightly", "--judge-model", "fake/z"])
-    assert captured["judge_model"] == "fake/z"
+    assert captured["judge_model"] == "openai/judge-b"
+    res = CliRunner().invoke(app, ["gate", "nightly", "--judge-model", "openai/judge-c"])
+    assert captured["judge_model"] == "openai/judge-c"
+    for bad, text in (
+        ("claude-haiku-5-5", "<provider>/<model>"),
+        ("openrouter/x", "unknown provider"),
+    ):
+        captured.clear()
+        res = CliRunner().invoke(app, ["run", "nightly", "--judge-model", bad])
+        assert res.exit_code == 2 and text in res.output, (bad, res.output)
+        assert "judge_model" not in captured  # rejected before the run started
 
 
 def test_gate_warns_when_a_cost_cap_counts_unpriced_calls():
@@ -225,3 +249,69 @@ def test_safety_and_human_checks_are_cheap_and_run_before_judges():
     )
     suite2.run(RecordedTarget(OUTPUTS))
     assert calls == ["good"]  # a safety rule is a contract: its failure spares the judge
+
+
+def test_per_check_summary_counts_skipped():
+    calls: list[str] = []
+    run = _suite(calls=calls, short_circuit=True).run(RecordedTarget(OUTPUTS))
+    per = {c.key: c for c in run.summary.per_check}
+    assert per["verdict"].skipped == 1 and per["contains"].skipped == 0
+
+
+def test_human_label_failure_does_not_short_circuit_the_judge(tmp_path):
+    """A human label is a quality verdict, not a contract: the judge still runs so the
+    two can be compared on exactly the samples where they disagree."""
+    from evalstone.checks.human import Label, LabelStore, human, output_hash
+
+    store = LabelStore(tmp_path / "labels.jsonl")
+    store.add(
+        Label(sample_id="good", output_hash=output_hash(OUTPUTS["good"]), value=0.0, passed=False)
+    )
+    store.add(
+        Label(sample_id="bad", output_hash=output_hash(OUTPUTS["bad"]), value=1.0, passed=True)
+    )
+    calls: list[str] = []
+    suite = Suite(
+        "s",
+        dataset=Dataset("d", SAMPLES),
+        checks=[human(labels=tmp_path / "labels.jsonl"), _judge_like(calls)],
+        short_circuit=True,
+    )
+    suite.run(RecordedTarget(OUTPUTS))
+    assert calls == ["good", "bad"]  # the human fail on `good` did not skip the judge
+
+
+def test_unpriced_warning_counts_a_target_call_once_per_sample():
+    from evalstone.run import Result, Run, summarise
+
+    def rows(sample: str, n_checks: int, target_unpriced: bool) -> list[Result]:
+        out = Output(value="x", metadata={"unpriced": target_unpriced})
+        return [
+            Result(sample_id=sample, check_key=f"k{i}", output=out, score=Score.ok("fine"))
+            for i in range(n_checks)
+        ]
+
+    results = rows("a", 4, True) + rows("b", 4, False)
+    run = Run(
+        suite="s",
+        dataset="d",
+        dataset_hash="0" * 16,
+        target={"kind": "prompt"},
+        check_keys=[f"k{i}" for i in range(4)],
+        started_at=Run.now(),
+        finished_at=Run.now(),
+        results=results,
+        summary=summarise(results, samples=2, checks=4, duration_ms=1.0),
+    )
+    report = Gate(max_cost_usd=1.0).evaluate(run)
+    assert any(line.startswith("WARN 1 result(s) from an unpriced model") for line in report.checks)
+
+
+def test_named_entry_never_inherits_the_adapter_key(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
+    providers = Providers(
+        {"openrouter": {"adapter": "openai", "base_url": "https://openrouter.ai/api/v1"}}
+    )
+    assert providers.get("openrouter").api_key is None  # a named entry needs its own key
+    plain = Providers({"openai": {}})
+    assert plain.get("openai").api_key == "sk-real"  # the entry named after the adapter may

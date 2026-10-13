@@ -15,6 +15,7 @@ from rich.table import Table
 
 from evalstone import __version__
 from evalstone.config import CONFIG_FILENAME, Config
+from evalstone.providers import ProviderError
 from evalstone.run import DEFAULT_FAILURES, Run, compare
 
 app = typer.Typer(
@@ -139,6 +140,13 @@ def run(
         err.print(f"[red]{escape(str(exc))}[/red]")
         raise typer.Exit(2) from None
     base = _load_run(baseline) if baseline else None
+    if judge_model is not None:
+        try:
+            registry = cfg.provider_registry()
+            registry.get(registry.split(judge_model)[0])
+        except ProviderError as exc:
+            err.print(f"[red]--judge-model: {escape(str(exc))}[/red]")
+            raise typer.Exit(2) from None
     with console.status(f"running {suite} over {len(s.dataset)} samples…"):
         result = s.run(
             target, baseline=base, trigger="cli", ctx=cfg.context(judge_model=judge_model)

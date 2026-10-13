@@ -64,11 +64,12 @@ def pairwise(
     """
     base_target: Target = baseline if isinstance(baseline, Target) else RecordedTarget(baseline)
     identity = {"v": 1, "rubric": rubric, "both_orders": both_orders}
+    unpriced: list[str] = []  # models of this sample's calls that the price table lacks
 
     def ask(ctx: Context, sample_input: str, a: str, b: str) -> tuple[str, str, float, float]:
         user = USER.format(input=sample_input, a=a, b=b)
         resp = ctx.providers.complete(
-            model,
+            ctx.judge_model or model,
             {
                 "system": SYSTEM.format(rubric=rubric.strip()),
                 "messages": [ChatMessage(role="user", content=user)],
@@ -76,13 +77,16 @@ def pairwise(
             },
         )
         winner, reason = parse_winner(resp.text)
+        if resp.cost_usd is None:
+            unpriced.append(resp.model)
         return winner, reason, resp.cost_usd or 0.0, resp.latency_ms
 
     def fn(sample: Sample, output: Output, ctx: Context) -> Score:
         if ctx.providers is None:
             return Score.errored("pairwise: no providers configured")
+        unpriced.clear()
         try:
-            resolved = "/".join(ctx.providers.split(model))
+            resolved = "/".join(ctx.providers.split(ctx.judge_model or model))
         except ProviderError as exc:
             return Score.errored(str(exc))
         version = sha256({**identity, "model": resolved})[:16]
@@ -130,7 +134,12 @@ def pairwise(
             reason=f"candidate {verdict}: " + " | ".join(r for r in reasons if r),
             cost_usd=cost,
             latency_ms=latency,
-            raw={"points": points, "orders": len(points), "judge_version": version},
+            raw={
+                "points": points,
+                "orders": len(points),
+                "judge_version": version,
+                "unpriced": bool(unpriced),
+            },
         )
         if ctx.cache is not None:
             ctx.cache.set(cache_key, score)

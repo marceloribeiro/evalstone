@@ -118,6 +118,7 @@ class Context(BaseModel):
 
     run_id: str | None = None
     providers: Any = None  # evalstone.providers.Providers, or None when no model access
+    judge_model: str | None = None  # overrides every judge's model (not targets): --judge-model
     cache: Any = Field(default_factory=MemoryCache)  # ScoreCache; set None to disable
     extra: dict[str, Any] = Field(default_factory=dict)
 

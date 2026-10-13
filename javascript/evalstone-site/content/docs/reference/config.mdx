@@ -46,7 +46,11 @@ to the entry's name), `base_url`, `api_key_env`, `api_key`, `headers`, `timeout`
 (and `max_tokens_param` for OpenAI-compatible servers). A judge model is
 `<name>/<model>`, so `openrouter/anthropic/claude-haiku-5-5` and
 `ollama/llama3.1` can sit next to `openai/…` and `anthropic/…`; `evalstone run
---judge-model <name>/<model>` overrides every judge for one run. The `openai`
+--judge-model <name>/<model>` overrides every judge (never the target under
+test) for one run. A named entry needs its own `api_key_env` or `api_key`:
+only an entry named after its adapter (`openai:`, `anthropic:`, `gemini:`)
+falls back to that adapter's default variable, so one vendor's key is never
+sent to another (Ollama needs none). The `openai`
 adapter speaks to any OpenAI-compatible server, so OpenRouter, Ollama, vLLM or
 Groq are a `base_url` away. Keys come from the environment variable named by
 `api_key_env` (or the provider's default one); `api_key` sets one inline, which

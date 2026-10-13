@@ -9,15 +9,21 @@ Judge switching and cost honesty.
 - **Named providers**: a `providers:` entry may name any adapter (`adapter:
   openai | anthropic | gemini`), so `openrouter:`, `ollama:` and `openai:` can
   coexist and a judge model reads `openrouter/anthropic/claude-haiku-5-5`.
-  Unknown provider names and adapters are reported with the known ones.
+  Unknown provider names and adapters are reported with the known ones. A
+  named entry never falls back to the adapter's default key variable (one
+  vendor's key is never sent to another); a 401/403 without a key says so.
 - **`--judge-model provider/model`** on `evalstone run` and `gate` overrides
-  every judge's model for that run (`Providers.override_model`;
-  `Config.context(judge_model=…)`): the same suite, a different judge.
+  every judge's and pairwise comparison's model for that run — never the
+  target under test (`Context.judge_model`; `Config.context(judge_model=…)`).
+  Validated before the run starts; a typo exits 2.
 - **`short_circuit: true`** on a suite skips the judge checks on a sample that
-  a contract check (deterministic, safety, trajectory, human) already failed.
-  The skipped result is a failure, not an error (`Score.skipped`,
-  `RunSummary.skipped`), so no paid call is spent on an output that already
-  failed and the error-rate gate is not tripped. Off by default.
+  a contract check (deterministic, safety, trajectory — not a human label,
+  which is a quality verdict the judge should still be compared against)
+  already failed. The skipped result is a failure, not an error
+  (`Score.skipped`, `RunSummary.skipped`, `CheckSummary.skipped`), so no paid
+  call is spent on an output that already failed and the error-rate gate is
+  not tripped. Off by default. Turning it on changes pass rates (a skipped
+  judge counts as a failure), so re-take your baseline when you enable it.
 - **Cheap-first ordering** now includes safety rules and human labels, not only
   deterministic and trajectory checks.
 - **Gate**: with `max_cost_usd` set, a `WARN` line counts results from models

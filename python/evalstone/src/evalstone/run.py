@@ -88,6 +88,7 @@ def summarise(
             n=len(rs),
             passed=sum(r.score.passed for r in rs),
             errors=sum(r.score.error is not None for r in rs),
+            skipped=sum(r.score.skipped for r in rs),
             pass_rate=sum(r.score.passed for r in rs) / len(rs),
             mean_score=sum(r.score.value for r in rs) / len(rs),
             cost_usd=sum(r.score.cost_usd for r in rs),

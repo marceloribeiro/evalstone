@@ -142,7 +142,6 @@ class Providers:
             for k, v in (config or {}).items()
         }
         self.default_model = default_model
-        self.override_model: str | None = None  # wins over every judge's model when set
         self.prices = dict(prices or {})
         self._instances: dict[str, Provider] = {}
 
@@ -159,7 +158,7 @@ class Providers:
         self._instances.clear()
 
     def split(self, model: str | None) -> tuple[str, str]:
-        model = self.override_model or model or self.default_model
+        model = model or self.default_model
         if not model:
             raise ProviderError("no model given and no judges.default_model configured")
         if "/" not in model:
@@ -192,22 +191,6 @@ class Providers:
             raise ProviderError(
                 f"provider {name!r}: unknown adapter {adapter!r} (adapters: {', '.join(ADAPTERS)})"
             )
-        return self._instances[name]
-        cfg = self.config.get(name, ProviderConfig())
-        if name == "openai":
-            from evalstone.providers.openai_compat import OpenAICompatProvider
-
-            self._instances[name] = OpenAICompatProvider(cfg, prices=self.prices)
-        elif name == "anthropic":
-            from evalstone.providers.anthropic_ import AnthropicProvider
-
-            self._instances[name] = AnthropicProvider(cfg, prices=self.prices)
-        elif name == "gemini":
-            from evalstone.providers.gemini import GeminiProvider
-
-            self._instances[name] = GeminiProvider(cfg, prices=self.prices)
-        else:
-            raise ProviderError(f"unknown provider {name!r} (known: openai, anthropic, gemini)")
         return self._instances[name]
 
     def complete(self, model: str | None, request_without_model: dict[str, Any]) -> ChatResponse:
