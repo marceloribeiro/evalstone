@@ -124,8 +124,8 @@ def revoke_ingest_key(db: Session, project: Project, key_id: uuid.UUID) -> Inges
     return key
 
 
-def resolve_ingest_key(db: Session, secret: str) -> Project | None:
-    """The project a secret belongs to, or None (unknown / revoked / deleted). Stamps last use."""
+def resolve_ingest_key(db: Session, secret: str) -> tuple[Project, Organization] | None:
+    """The (project, org) a secret belongs to, or None (unknown / revoked / deleted / dead org)."""
     key = db.scalar(
         select(IngestKey).where(
             IngestKey.key_hash == hash_ingest_key(secret),
@@ -145,4 +145,4 @@ def resolve_ingest_key(db: Session, secret: str) -> Project | None:
     if key.last_used_at is None or now - key.last_used_at > LAST_USED_RESOLUTION:
         key.last_used_at = now
         db.commit()
-    return project
+    return project, org

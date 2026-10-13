@@ -6,7 +6,10 @@ calibration and monitoring land here slice by slice (`docs/ROADMAP.md`).
 
 ## Local development
 
-PostgreSQL 16 and Redis run natively on your machine (no containers).
+PostgreSQL 16 (with the **pgvector** extension: `brew install pgvector`) and Redis run
+natively on your machine (no containers). The first migration runs
+`CREATE EXTENSION IF NOT EXISTS vector`, which needs a superuser role once per database;
+the Homebrew OS-user role is one, on a server the operator runs it before the first migrate.
 
 ```bash
 cp .env.example .env         # DB_USER = your OS user; pick a free Redis index

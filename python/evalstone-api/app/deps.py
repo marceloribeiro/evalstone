@@ -105,10 +105,6 @@ class ProjectActor:
     user: User | None  # None when an ingest key is the caller
     role: Role | None  # None for an ingest key
 
-    @property
-    def via_ingest_key(self) -> bool:
-        return self.user is None
-
 
 def get_project_actor(
     project_id: uuid.UUID = Path(...),
@@ -117,10 +113,9 @@ def get_project_actor(
 ) -> ProjectActor:
     """Data-plane routes (datasets, runs): a member of the org, or this project's `es_…` key."""
     if credentials is not None and credentials.credentials.startswith(INGEST_KEY_PREFIX):
-        project = project_service.resolve_ingest_key(db, credentials.credentials)
-        if project is None or project.id != project_id:
-            raise Unauthorized("unknown, revoked or wrong-project ingest key")
-        org = org_service.get_organization(db, project.organization_id)
+        project, org = get_ingest_project(credentials, db)  # the one ingest-key auth rule
+        if project.id != project_id:
+            raise NotFound("project not found")  # a valid key for another project: outsider
         return ProjectActor(project=project, organization=org, user=None, role=None)
     ctx = get_project_member(project_id, get_current_user(credentials, db), db)
     return ProjectActor(
@@ -131,11 +126,11 @@ def get_project_actor(
 def get_ingest_project(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     db: Session = Depends(get_db),
-) -> Project:
+) -> tuple[Project, Organization]:
     """SDK / CI / Turnstile callers present `Authorization: Bearer es_…`."""
     if credentials is None or not credentials.credentials.startswith(INGEST_KEY_PREFIX):
         raise Unauthorized("missing ingest key")
-    project = project_service.resolve_ingest_key(db, credentials.credentials)
-    if project is None:
+    resolved = project_service.resolve_ingest_key(db, credentials.credentials)
+    if resolved is None:
         raise Unauthorized("unknown or revoked ingest key")
-    return project
+    return resolved
