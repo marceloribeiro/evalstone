@@ -29,9 +29,11 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 from evalstone.checks import deterministic, registry
+from evalstone.checks.judge import judge as judge_factory
 from evalstone.dataset import Dataset
 from evalstone.gate import Gate
-from evalstone.score import Check
+from evalstone.providers import ProviderConfig, Providers
+from evalstone.score import Check, Context
 from evalstone.suite import Suite
 from evalstone.target import Target
 from evalstone.target import target as make_target
@@ -49,8 +51,12 @@ class SuiteConfig(BaseModel):
     @classmethod
     def _needs_kind(cls, v: dict[str, Any]) -> dict[str, Any]:
         if "kind" not in v:
-            raise ValueError("target needs a `kind` (callable | http | recorded)")
+            raise ValueError("target needs a `kind` (callable | http | recorded | prompt)")
         return v
+
+
+class JudgesConfig(BaseModel):
+    default_model: str | None = None
 
 
 class Config(BaseModel):
@@ -59,8 +65,25 @@ class Config(BaseModel):
     datasets: dict[str, str] = Field(default_factory=dict)
     checks: dict[str, dict[str, Any]] = Field(default_factory=dict)
     suites: dict[str, SuiteConfig] = Field(default_factory=dict)
+    providers: dict[str, ProviderConfig] = Field(default_factory=dict)
+    judges: JudgesConfig = Field(default_factory=JudgesConfig)
+    # model → (USD per 1M input tokens, USD per 1M output tokens); overrides the built-in table
+    prices: dict[str, tuple[float, float]] = Field(default_factory=dict)
     report: str = "evalstone-report.json"
     root: Path = Field(default=Path("."), exclude=True)
+    _providers: Providers | None = None
+
+    def provider_registry(self) -> Providers:
+        """One ``Providers`` per config (adapters are created lazily, keys read from env)."""
+        if self._providers is None:
+            self._providers = Providers(
+                self.providers, default_model=self.judges.default_model, prices=self.prices
+            )
+        return self._providers
+
+    def context(self) -> Context:
+        """The run context: model access for judges and prompt targets, plus a judge cache."""
+        return Context(providers=self.provider_registry())
 
     # ── loading ──────────────────────────────────────────────────────────
 
@@ -119,6 +142,13 @@ class Config(BaseModel):
             spec["fn"] = _import_callable(spec["fn"], self.root)
         if kind == "recorded" and "path" in spec:
             spec["path"] = self.root / spec["path"]
+        if kind == "prompt":
+            if not spec.get("model"):
+                raise ValueError(
+                    "prompt target needs its own `model` — it is the system under test and must "
+                    "not silently share judges.default_model (a model grading itself)"
+                )
+            spec["providers"] = self.provider_registry()
         return make_target(kind, **spec)
 
     def suite(self, name: str) -> tuple[Suite, Target]:
@@ -141,6 +171,7 @@ class Config(BaseModel):
 FACTORIES: dict[str, Callable[..., Any]] = {
     name: getattr(deterministic, name) for name in deterministic.__all__ if name != "python"
 }
+FACTORIES["judge"] = judge_factory  # judge(key, rubric, *, scale, model, …)
 
 
 def _load_module(dotted: str, root: Path) -> Any:
@@ -170,4 +201,4 @@ def _import_callable(ref: str, root: Path) -> Any:
     return getattr(_load_module(mod, root), attr)
 
 
-__all__ = ["CONFIG_FILENAME", "Config", "SuiteConfig"]
+__all__ = ["CONFIG_FILENAME", "Config", "JudgesConfig", "SuiteConfig"]

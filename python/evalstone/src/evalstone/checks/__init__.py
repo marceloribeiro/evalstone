@@ -13,6 +13,7 @@ from evalstone.checks.deterministic import (
     python,
     regex,
 )
+from evalstone.checks.judge import judge
 
 __all__ = [
     "CheckFn",
@@ -22,6 +23,7 @@ __all__ = [
     "contains",
     "exact",
     "json_schema",
+    "judge",
     "length",
     "numeric_tolerance",
     "python",

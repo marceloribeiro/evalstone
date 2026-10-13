@@ -5,9 +5,29 @@ datasets:
 checks:
   must_include: { type: contains }
   short: { type: length, max_words: 40 }
+  helpful:
+    type: judge
+    rubric: |
+      The answer must directly address the customer's question using the store policy,
+      state the concrete rule (numbers, time windows, conditions), and avoid inventing
+      policy that is not in the answer itself.
+    scale: 5
 suites:
   nightly:
     dataset: golden
     target: { kind: callable, fn: "bot:answer" }
     checks: [must_include, short, no_apology, one_sentence]
     gate: { min_pass_rate: 0.9 }
+  judged:                      # deterministic checks + an LLM judge; needs ANTHROPIC_API_KEY
+    dataset: golden
+    target: { kind: callable, fn: "bot:answer" }
+    checks: [must_include, helpful]
+    gate: { min_pass_rate: 0.9 }
+
+# ── LLM-as-judge (needs a provider key in the environment) ───────────────────
+# Uncomment `providers.openai.base_url` to route through OpenRouter / Ollama instead.
+judges:
+  default_model: anthropic/claude-haiku-5-5     # ANTHROPIC_API_KEY
+providers:
+  anthropic: { api_key_env: ANTHROPIC_API_KEY }
+  # openai: { base_url: https://openrouter.ai/api/v1, api_key_env: OPENROUTER_API_KEY }

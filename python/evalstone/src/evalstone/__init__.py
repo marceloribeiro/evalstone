@@ -8,10 +8,18 @@ from evalstone.checks import check, registry
 from evalstone.dataset import Dataset, Sample, Source
 from evalstone.gate import Gate, GateFailed, GateReport
 from evalstone.output import Output
+from evalstone.providers import Providers
 from evalstone.run import Comparison, Result, Run, RunSummary, compare, write_report
-from evalstone.score import Check, CheckKind, Context, Score
+from evalstone.score import Check, CheckKind, Context, MemoryCache, Score
 from evalstone.suite import Suite
-from evalstone.target import CallableTarget, HttpTarget, RecordedTarget, Target, target
+from evalstone.target import (
+    CallableTarget,
+    HttpTarget,
+    PromptTarget,
+    RecordedTarget,
+    Target,
+    target,
+)
 
 __version__ = "0.1.0.dev1"
 
@@ -26,7 +34,10 @@ __all__ = [
     "GateFailed",
     "GateReport",
     "HttpTarget",
+    "MemoryCache",
     "Output",
+    "PromptTarget",
+    "Providers",
     "RecordedTarget",
     "Result",
     "Run",

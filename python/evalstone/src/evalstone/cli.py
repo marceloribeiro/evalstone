@@ -130,7 +130,7 @@ def run(
         raise typer.Exit(2) from None
     base = _load_run(baseline) if baseline else None
     with console.status(f"running {suite} over {len(s.dataset)} samples…"):
-        result = s.run(target, baseline=base, trigger="cli")
+        result = s.run(target, baseline=base, trigger="cli", ctx=cfg.context())
     console.print(_run_table(result))
     _print_failures(result, failures)
     _print_gate(result)

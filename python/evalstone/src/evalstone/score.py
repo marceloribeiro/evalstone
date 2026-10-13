@@ -78,15 +78,39 @@ class Score(BaseModel):
         return cls(value=value, passed=value >= threshold, reason=reason)
 
 
-class Context(BaseModel):
-    """Run-wide facts a check may need (configuration, model access, caches).
+class ScoreCache(Protocol):
+    """Where judge verdicts are remembered, keyed by content hash."""
 
-    Kept deliberately small in this slice; judges extend it in a later PR.
-    """
+    def get(self, key: str) -> Score | None: ...
+
+    def set(self, key: str, score: Score) -> None: ...
+
+
+class MemoryCache:
+    """An in-process ``ScoreCache``. The center-backed cache arrives with Phase 3."""
+
+    def __init__(self) -> None:
+        self._data: dict[str, Score] = {}
+
+    def get(self, key: str) -> Score | None:
+        return self._data.get(key)
+
+    def set(self, key: str, score: Score) -> None:
+        self._data[key] = score
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+
+class Context(BaseModel):
+    """Run-wide facts a check may need: model access (``providers``), the judge
+    cache, and free-form ``extra``."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     run_id: str | None = None
+    providers: Any = None  # evalstone.providers.Providers, or None when no model access
+    cache: Any = Field(default_factory=MemoryCache)  # ScoreCache; set None to disable
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
