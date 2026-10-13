@@ -130,4 +130,27 @@ def check(
     return decorator
 
 
-__all__ = ["CheckFn", "FunctionCheck", "Registry", "check", "registry"]
+from evalstone.checks.deterministic import (  # noqa: E402 — factories need the classes above
+    contains,
+    exact,
+    json_schema,
+    length,
+    numeric_tolerance,
+    python,
+    regex,
+)
+
+__all__ = [
+    "CheckFn",
+    "FunctionCheck",
+    "Registry",
+    "check",
+    "contains",
+    "exact",
+    "json_schema",
+    "length",
+    "numeric_tolerance",
+    "python",
+    "regex",
+    "registry",
+]

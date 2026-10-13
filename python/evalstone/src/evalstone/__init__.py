@@ -3,6 +3,7 @@
 The library computes; it owns no database. See https://evalstone.com/docs.
 """
 
+from evalstone import checks
 from evalstone.checks import check, registry
 from evalstone.dataset import Dataset, Sample, Source
 from evalstone.output import Output
@@ -21,5 +22,6 @@ __all__ = [
     "Source",
     "__version__",
     "check",
+    "checks",
     "registry",
 ]
