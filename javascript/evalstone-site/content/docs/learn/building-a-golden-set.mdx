@@ -1,0 +1,88 @@
+---
+title: Building a golden set
+description: Harvest, label, split, version. How big is big enough.
+---
+
+A **golden set** is the dataset you trust: inputs that represent real use,
+with references a person has checked. It is the single most valuable asset in
+your eval setup, and the one most teams never get around to building because
+it feels like it has to be big and perfect first. It does not.
+
+## Start small and real
+
+Twenty samples is a golden set. Write them from:
+
+- **Logs.** The last 200 real inputs, deduplicated, with the obviously
+  broken ones kept on purpose.
+- **Bugs.** Every "the bot said X" report is a sample with a known bad
+  output and an implied good one.
+- **The prompt.** The few-shot examples in your prompt are samples you
+  already believe in (move them out of the prompt, see
+  [pitfalls](/docs/learn/pitfalls)).
+- **Your head.** The cases you worry about: the ambiguous one, the
+  multi-part one, the one in another language, the hostile one.
+
+Give every sample **tags** (`refund`, `multi-part`, `pt-BR`, `adversarial`).
+Tags are how you will later read "all the multi-part questions regressed".
+
+## Write references, not scripts
+
+A reference is what a good answer *must* contain or satisfy, not the exact
+words. "Mentions the 30-day window and links the policy" ages better than a
+full paragraph you will be tempted to compare against. For structured
+outputs the reference is the exact object. For open-ended ones it is a
+checklist, and the check is a judge with that checklist as its rubric.
+
+## Label what you cannot reference
+
+Some outputs have no reference; they are just good or bad. For those you
+collect **labels**: a person grades a produced output (1–5, pass/fail, or
+"A is better than B"). Labels serve two purposes: they are training data for
+your rubric, and they are the ground truth you calibrate judges against
+([chapter 6](/docs/learn/llm-as-judge)).
+
+Make labeling fast or it will not happen: one sample on screen, the rubric
+beside it, number keys to grade, next sample. A queue with assignees so two
+people do not grade the same thing twice (unless you want agreement data).
+
+## Harvest from production
+
+Once the feature is live, the best new samples come from traffic:
+
+- **Low-scoring exchanges** flagged by a production monitor
+  ([chapter 8](/docs/learn/evals-in-production)).
+- **User-flagged** answers (thumbs down).
+- **A random sample**, so the set does not become only the hard cases.
+- **Near-duplicates removed.** Embed the inputs and drop ones too close to
+  what you already have; a golden set with forty variants of the same
+  question measures one thing forty times.
+
+## Split
+
+Keep a slice of the golden set that you **never look at while iterating on
+the prompt**. If you tune until every sample passes, you have overfit the
+set; the held-out slice tells you by how much. A 80/20 split is plenty.
+
+## Version it
+
+The dataset will change: you add harvested samples, fix a wrong reference,
+retire a case. **Every run must pin the exact version it ran against**, or
+the comparison between run 47 and run 48 is meaningless. Content-hash the
+samples and bump a version number on every change; store the diff between
+versions so "the pass rate dropped" can be separated from "we added 30 harder
+samples".
+
+## How big is big enough?
+
+| Purpose | Size |
+| --- | --- |
+| Make the next prompt change measurable | 20–50 |
+| Catch a 5-point regression with confidence | 150–300 |
+| Per-tag slices you can trust | 30+ per tag you care about |
+| Calibrate a judge | 100+ labeled samples |
+
+Bigger is not automatically better: a 2,000-sample set that costs $40 and
+20 minutes per run stops being run. Keep a small inner-loop subset and a
+full set for the gate.
+
+Next: [LLM-as-judge done right](/docs/learn/llm-as-judge).

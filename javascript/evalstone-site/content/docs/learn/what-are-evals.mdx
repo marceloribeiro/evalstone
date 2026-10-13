@@ -1,0 +1,70 @@
+---
+title: What are evals?
+description: Tests for a system that does not give the same answer twice.
+---
+
+## The problem with asserting equality
+
+A unit test says: given `x`, the function returns exactly `y`. That works
+because the function is deterministic. An LLM call is not. Ask the same
+question twice and you get two differently worded answers, both possibly
+fine. Change one word in the prompt and a different 3% of answers change in
+ways you did not intend. Upgrade the model and the distribution shifts again.
+
+So `assert output == expected` is useless for most LLM features. You need a
+test that asks a different question: **across many inputs, how good are the
+outputs, and is that good enough?**
+
+## An eval, defined
+
+An **eval** (short for evaluation) is a measurement of an LLM feature's
+quality over a dataset, with a decision rule attached. Four parts:
+
+1. **Dataset.** A collection of inputs that represent what the feature will
+   actually see. Often each input carries a *reference*: the expected answer,
+   the facts that must appear, the JSON shape that must come back.
+2. **Run.** You execute your feature for every input and keep the outputs,
+   along with what produced them (prompt version, model, git commit).
+3. **Checks.** For every output, one or more scorers produce a number and a
+   pass/fail. A check can be a rule (`is valid JSON`), a model with a rubric
+   (`is this answer faithful to the retrieved context?`), a person, or a
+   comparison against a previous run.
+4. **Gate.** The decision rule. "95% of samples pass", "the mean score did
+   not drop more than 2 points versus the baseline", "total cost under $5".
+
+## What an eval is not
+
+- **Not a benchmark.** Public benchmarks (MMLU, HumanEval, …) rank models on
+  general tasks. An eval measures *your* feature on *your* inputs. A model
+  that tops a leaderboard can still be wrong about your refund policy.
+- **Not observability.** Tracing tells you what happened in one request.
+  Evals tell you whether the system is good, in aggregate, and whether it is
+  getting better or worse.
+- **Not a one-off.** A single run is a snapshot. The value is in running the
+  same dataset again after every change and comparing.
+
+## A tiny example
+
+Say you built a support bot. Your dataset has 60 real customer questions,
+each with the policy article that answers it. A run sends the 60 questions
+through the bot. Three checks score each answer:
+
+| Check | Kind | What it asks |
+| --- | --- | --- |
+| `cites_policy` | rule | Does the answer mention the right article? |
+| `faithfulness` | LLM judge | Does the answer only claim things the article supports? |
+| `tone` | LLM judge | Is it polite and does it avoid blaming the customer? |
+
+The gate says: `cites_policy` ≥ 95%, `faithfulness` mean ≥ 0.9, and nothing
+lower than the last run on `main`. If a prompt change drops `faithfulness`
+to 0.84, the pull request goes red and you look at the eight answers that
+failed. That is the whole idea.
+
+## Why the word "eval"
+
+Because the machine-learning world has always called this *evaluation*: the
+held-out set you measure against after training. The practice moved from
+model builders to product builders when the models became APIs. The name
+stuck; the loop is the same.
+
+Next: [Why you need them](/docs/learn/why-you-need-them).

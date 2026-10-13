@@ -1,0 +1,105 @@
+---
+title: Library
+description: The Python API and the evalstone.yaml file. Design preview — not yet on PyPI.
+---
+
+<Callout type="warn" title="Not yet released">
+  The library is the next piece to ship. What follows is the design the code is
+  being written to. It will change in details; the shape will not.
+</Callout>
+
+## Install
+
+```bash
+pip install evalstone
+```
+
+## Python API
+
+```python
+import evalstone as es
+
+ds = es.Dataset.from_jsonl("evals/golden.jsonl")
+
+suite = es.Suite(
+    "support-bot",
+    dataset=ds,
+    checks=[
+        es.checks.json_schema(schema=Answer),
+        es.checks.contains(field="expected.must_include"),
+        es.checks.judge("helpfulness", rubric=RUBRIC, scale=5,
+                        model="anthropic/claude-haiku-5-5"),
+        es.checks.rag.faithfulness(),
+    ],
+    gate=es.Gate(min_pass_rate=0.95, max_regression=0.02),
+)
+
+run = suite.run(target=my_app.answer)   # callable(sample.input) -> output
+print(run.summary())                     # pass rate, mean score, cost, duration
+run.gate()                               # raises es.GateFailed
+```
+
+A dataset line in `golden.jsonl`:
+
+```json
+{"input": {"question": "Can I return a sale item?"},
+ "expected": {"must_include": ["30 days", "original receipt"]},
+ "tags": ["refund"]}
+```
+
+## Writing a check
+
+A check is a function. The built-ins are the same shape.
+
+```python
+@es.check("no_apology")
+def no_apology(sample, output):
+    ok = "sorry" not in output.text.lower()
+    return es.Score(value=float(ok), passed=ok,
+                    reason="" if ok else "apologised")
+```
+
+## `evalstone.yaml`
+
+```yaml
+project: support-bot
+datasets:
+  golden: evals/golden.jsonl
+suites:
+  nightly:
+    dataset: golden
+    target: { kind: http, url: http://localhost:8000/answer }
+    checks: [json_schema, helpfulness, faithfulness]
+    gate: { min_pass_rate: 0.95, max_regression: 0.02 }
+judges:
+  default_model: anthropic/claude-haiku-5-5
+providers:
+  openai:    { base_url: https://api.openai.com/v1, api_key_env: OPENAI_API_KEY }
+  anthropic: { api_key_env: ANTHROPIC_API_KEY }
+center:    # optional — without it, runs print and write a JSON report only
+  url: https://api.evalstone.com
+  api_key_env: EVALSTONE_API_KEY
+```
+
+Model strings are `<provider>/<model>`. Providers: `openai` (any
+OpenAI-compatible base URL, so OpenRouter, Ollama and vLLM work), `anthropic`,
+`gemini`. Keys come from the environment and are never stored.
+
+## CLI
+
+```bash
+evalstone init                 # writes evalstone.yaml + evals/golden.jsonl
+evalstone run nightly          # table + evalstone-report.json
+evalstone compare <run> <run>  # sample-by-sample diff
+evalstone gate nightly         # exit code for CI
+evalstone label <run>          # grade outputs in the terminal
+evalstone mcp                  # start the MCP server (stdio)
+```
+
+## Guarantees
+
+- Cheap checks run first; judge calls are concurrent, cached by
+  (judge version, input, output) and priced.
+- A judge error is `error`, never `pass`; the gate fails above
+  `max_error_rate` (default 0).
+- Every run records the dataset version, git SHA, model, cost and duration.

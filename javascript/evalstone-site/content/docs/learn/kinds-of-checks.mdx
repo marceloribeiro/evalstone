@@ -1,0 +1,102 @@
+---
+title: Kinds of checks
+description: Deterministic, LLM-as-judge, human, pairwise, RAG, agent trajectory, safety — and when each is the right tool.
+---
+
+A **check** takes a sample and an output and produces a **score** (a number
+in 0..1) and a **verdict** (pass or fail). Everything else is detail. The
+detail matters, because the kind of check decides what it costs, how much
+you can trust it, and what it can see.
+
+## Deterministic checks
+
+Pure code, no model, free, perfectly repeatable. Use them whenever the
+property you care about can be stated exactly.
+
+| Check | Example |
+| --- | --- |
+| Exact match | A classifier must return one of `billing`, `shipping`, `other` |
+| Contains / regex | The answer must mention the order number from the input |
+| JSON schema | The extraction output must validate against `Invoice` |
+| Numeric tolerance | The computed total must be within 1 cent of the reference |
+| Length / format | Under 120 words; no markdown; ends with a question |
+| Custom function | Any Python you can write: "calls the `refund` tool at most once" |
+
+**Rule of thumb:** if a deterministic check *can* express the requirement,
+use it. It is the floor every other check stands on.
+
+## LLM-as-judge
+
+A model reads the input, the output, and a **rubric**, and returns a score.
+This is how you measure things no regex can: helpfulness, faithfulness to a
+source, tone, whether an answer actually addressed the question.
+
+It is powerful and it is a model, so it has failure modes of its own
+(position bias, verbosity bias, agreeing with confident wrong answers).
+[Chapter 6](/docs/learn/llm-as-judge) is entirely about doing it right. The
+short version: write a specific rubric, use a small scale, keep the judge
+model different from the model under test when you can, and **calibrate**
+it against human labels before you trust it.
+
+## Human checks
+
+A person grades the output. The most expensive check and the most trusted.
+You use humans in three places:
+
+1. To create references and labels for the golden set.
+2. To calibrate judges (humans and judge grade the same samples; you measure
+   agreement).
+3. As the check of last resort for a small, high-stakes slice.
+
+The trick is a labeling queue that makes grading fast: one sample at a
+time, keyboard-driven, with the rubric visible.
+
+## Pairwise comparison
+
+Instead of scoring an output on its own, show two outputs (two prompts, two
+models, two runs) and ask which is better. Humans and judges are both much
+more consistent at *preferring* than at *scoring*. Use pairwise when you are
+choosing between candidates rather than checking against a bar. Randomize
+the order: judges prefer whichever answer comes first unless you shuffle.
+
+## RAG checks
+
+Retrieval-augmented features have three things that can go wrong, and you
+want to know which one did:
+
+- **Context relevance.** Did retrieval fetch passages that answer the question?
+- **Faithfulness.** Does the answer only claim what the context supports?
+- **Answer relevance.** Does the answer address what was asked?
+
+These are judge-backed checks with specific rubrics. Measuring them
+separately tells you whether to fix the retriever or the prompt.
+
+## Agent trajectory checks
+
+For tool-using agents the *answer* is often less important than the *path*:
+which tools were called, in what order, with what arguments, and whether the
+agent stopped. Trajectory checks assert over the transcript: "called
+`lookup_order` before `issue_refund`", "never called a tool more than three
+times", "finished in under 8 steps". Most of these are deterministic.
+
+## Safety checks
+
+Did the feature refuse when it should have, and not when it should not?
+Did it leak PII from the context? Did it produce something your policy
+forbids? A mix of rules (PII patterns, forbidden strings) and a judge with a
+narrow rubric. Keep these in a separate suite so a safety regression is
+never hidden inside an aggregate score.
+
+## Choosing
+
+```
+Can you state it exactly?            → deterministic
+Is it a quality judgement?           → LLM judge (calibrated)
+Are you choosing between two things? → pairwise
+Is retrieval involved?               → RAG trio
+Is it an agent?                      → trajectory + the above on the final answer
+Could it hurt someone?               → safety suite, gated separately
+Is it high-stakes and rare?          → human
+```
+
+Next: [Building a golden set](/docs/learn/building-a-golden-set).

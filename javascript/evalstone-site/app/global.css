@@ -1,0 +1,41 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/* Dark mode follows the `.dark` class set by the Fumadocs theme provider. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Evalstone identity: stone neutrals + one amber accent — the gold streak a
+     touchstone leaves when the metal is real. */
+  --color-accent: oklch(0.666 0.179 58.3);
+  --color-accent-strong: oklch(0.555 0.163 48.998);
+  --color-accent-soft: oklch(0.962 0.059 95.617);
+  --color-pass: oklch(0.627 0.194 149.214);
+  --color-fail: oklch(0.577 0.245 27.325);
+}
+
+:root {
+  --color-fd-primary: oklch(0.555 0.163 48.998);
+}
+
+.dark {
+  --color-fd-primary: oklch(0.769 0.188 70.08);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+.landing-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, currentColor 6%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, currentColor 6%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse at top, black 30%, transparent 75%);
+}

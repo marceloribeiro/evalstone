@@ -1,0 +1,16 @@
+{
+  "title": "Learn evals",
+  "description": "Evals 101",
+  "pages": [
+    "index",
+    "what-are-evals",
+    "why-you-need-them",
+    "the-eval-loop",
+    "kinds-of-checks",
+    "building-a-golden-set",
+    "llm-as-judge",
+    "gates-and-ci",
+    "evals-in-production",
+    "pitfalls"
+  ]
+}

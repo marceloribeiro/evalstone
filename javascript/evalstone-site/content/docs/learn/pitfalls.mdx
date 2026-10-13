@@ -1,0 +1,85 @@
+---
+title: Pitfalls
+description: The ways evals go green while the product is broken.
+---
+
+Every one of these has been seen in a real team. Most of them make the
+dashboard look better while the product gets worse.
+
+## Overfitting the golden set
+
+You iterate on the prompt until all 60 samples pass. The prompt is now
+tuned to those 60 inputs. Keep a held-out slice you never look at while
+iterating, and harvest new samples from production regularly. If held-out
+is much worse than the iteration set, you overfit.
+
+## Leaking references into the prompt
+
+The few-shot examples in your system prompt are also in your dataset. Those
+samples pass because the model is copying, not generalising. Either remove
+them from the dataset or tag them `fewshot` and exclude that tag from the
+gate.
+
+## Judging similarity instead of quality
+
+The judge prompt includes the reference answer, so it grades "how close is
+this to the reference" and penalises a correct answer phrased differently.
+Only include the reference when similarity is the criterion.
+
+## Judge and model collusion
+
+The same model writes the answer and grades it. It likes its own style.
+Use a different model family for the judge, and calibrate.
+
+## Uncalibrated judge in the gate
+
+A judge nobody has measured against humans blocks pull requests. The team
+learns the eval is noise and routes around it. Calibrate first; gate second.
+
+## Errors counted as passes
+
+The judge API timed out, the parser returned `None`, the check treated it as
+fine. The suite went green during an outage. Errors are a third state and
+the gate fails on too many of them.
+
+## Comparing runs across dataset versions
+
+"Pass rate dropped from 94% to 88%" after you added 40 hard samples. Nothing
+regressed. Pin the dataset version in every run and compare only like with
+like; report dataset changes separately.
+
+## Gating on tiny slices
+
+Three samples in the `pt-BR` tag; one failed; the PR is red at "67%". Gate
+on aggregates and on tags with enough samples; report the rest.
+
+## The suite nobody runs
+
+Twenty minutes and $30 per run. It runs once a week, then never. Keep an
+inner-loop subset that takes a minute, cache judge calls, run deterministic
+checks first, and keep the full suite for the gate.
+
+## Green but broken
+
+Every check passes and users are unhappy. The checks measure what was easy
+to measure, not what matters. Go back to the failure reports: what did users
+actually complain about? Write a check for that, even if it needs a human
+at first.
+
+## Measuring the model, not the feature
+
+The eval calls the model directly with the prompt, while production goes
+through retrieval, a reranker, a formatter and a cache. The eval is green;
+production is different code. Evaluate the feature at the boundary users
+touch: the function, the HTTP endpoint.
+
+## Metrics without samples
+
+The report says 0.86 and nothing else. Nobody can act on a number. Every
+report lists the samples that failed or flipped, with outputs and reasons.
+
+---
+
+That is Evals 101. If you want to see how Evalstone turns these practices
+into a library, a center and a set of integrations, continue to
+[How Evalstone helps](/docs/evalstone).

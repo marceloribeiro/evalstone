@@ -1,0 +1,33 @@
+---
+title: MCP server
+description: Run evals from inside Claude Code, Cursor, or any MCP client. Design, shipping with the library.
+---
+
+<Callout type="warn" title="Building">
+  The MCP server ships with the library (same package, `evalstone mcp`).
+</Callout>
+
+If a coding agent is editing your prompt, it should be able to run your
+evals before it tells you it is done. The Evalstone MCP server exposes the
+suite to any Model Context Protocol client over stdio.
+
+## Setup
+
+```bash
+claude mcp add evalstone -- evalstone mcp
+```
+
+## Tools
+
+| Tool | What it does |
+| --- | --- |
+| `list_suites` | Suites and datasets from `evalstone.yaml` |
+| `run_suite` | Run a suite against its target; returns the summary and the failed samples |
+| `compare_runs` | Sample-by-sample diff of two runs |
+| `judge_output` | Score one (input, output) with a named judge check |
+| `record_sample` | Append a sample to a dataset (for harvesting from a conversation) |
+| `get_run` | Fetch a run's results from the center |
+
+A typical agent loop: edit the prompt → `run_suite("nightly")` → read the
+eight failures → edit again → `run_suite` → `compare_runs` → report the diff
+to you. The gate is still yours; the agent just stops guessing.

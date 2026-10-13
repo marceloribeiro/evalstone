@@ -1,0 +1,98 @@
+---
+title: LLM-as-judge done right
+description: Rubrics, scales, position bias, calibration against humans, cost control.
+---
+
+Using a model to grade a model is the technique that made evals practical
+for open-ended outputs. It is also the technique with the most ways to fool
+yourself. This chapter is the checklist.
+
+## Write a rubric, not a vibe
+
+"Rate the helpfulness 1–10" produces noise. A rubric names the criteria,
+defines each level, and tells the judge what to ignore:
+
+```text
+You are grading a customer-support answer.
+
+Criteria:
+1. Correctness — every factual claim is supported by the POLICY text below.
+2. Completeness — the answer addresses every part of the QUESTION.
+3. Tone — polite, does not blame the customer.
+
+Score 1–5:
+5 = all three criteria fully met
+4 = minor wording issue, no factual or completeness problem
+3 = one part of a multi-part question missed, facts correct
+2 = a factual claim not supported by the policy
+1 = wrong, off-topic, or rude
+
+Ignore: formatting, length, whether it uses markdown.
+Output JSON: {"score": <1-5>, "reason": "<one sentence>"}
+```
+
+Specific criteria, a small scale with defined levels, an explicit ignore
+list, structured output. Every one of those is there because its absence
+produced a bad judge somewhere.
+
+## Use small scales
+
+Models are bad at 1–10 and worse at 1–100. 1–5 with level definitions, or
+pass/fail with a reason, is where agreement with humans is highest. Map the
+scale to 0..1 for aggregation and keep the raw value in the reason.
+
+## Know the biases
+
+- **Position bias.** In pairwise comparison the judge prefers the first (or
+  sometimes the second) answer. Always run both orders, or randomize.
+- **Verbosity bias.** Longer answers score higher. Put "ignore length" in the
+  rubric and check whether the correlation survives.
+- **Self-preference.** A model rates its own outputs higher. Use a different
+  model family for the judge when you can.
+- **Anchoring on confidence.** A confident wrong answer scores higher than a
+  hedged right one. Correctness criteria must say "supported by the source",
+  not "sounds right".
+- **Reference leakage.** If the reference answer is in the judge prompt, the
+  judge grades similarity to the reference, not quality. Only include it
+  when similarity *is* the criterion.
+
+## Calibrate before you trust
+
+A judge is a measurement instrument; you check an instrument against a
+standard. The standard is **human labels**:
+
+1. Have people grade 100+ samples with the same rubric.
+2. Run the judge on the same samples.
+3. Compute agreement: exact-match rate, and Cohen's kappa (which corrects
+   for agreement by chance). Look at the confusion matrix, not just the
+   number: a judge that is always one level generous is fixable; one that is
+   random in the middle of the scale is not.
+4. Iterate on the rubric (not on the samples) until agreement is acceptable.
+   For most product work, kappa above 0.6 with no systematic bias is usable;
+   above 0.8 is excellent.
+5. **Freeze the judge version.** The rubric text, the model, the few-shot
+   examples. A changed judge is a changed ruler; runs across the change are
+   not comparable.
+
+Repeat when the judge model is upgraded.
+
+## Control the cost
+
+- **Temperature 0** and a **cache** keyed on (judge version, input, output).
+  Re-running a suite where 90% of outputs did not change costs 10%.
+- **Deterministic checks first.** An output that fails the JSON schema does
+  not need a $0.002 judgement of its tone.
+- **Small judge models** are fine for narrow rubrics once calibrated. Use
+  the expensive model to label, the cheap one to judge, and let calibration
+  tell you if the cheap one is good enough.
+- **Report cost per run** so a judge that quietly started re-running shows
+  up as a number.
+
+## A judge error is not a pass
+
+Timeouts, malformed JSON, refusals: the judge did not score the sample. That
+sample is an **error**, counted separately, and the gate should fail if the
+error rate exceeds a small tolerance. A suite that treats errors as passes
+goes green the day the judge API goes down.
+
+Next: [Gates and CI](/docs/learn/gates-and-ci).

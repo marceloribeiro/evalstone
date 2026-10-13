@@ -1,0 +1,33 @@
+---
+title: Roadmap
+description: What is built, what is next, what is deferred.
+---
+
+The engineering roadmap lives in the repository and is the source of truth:
+[docs/ROADMAP.md](https://github.com/marceloribeiro/evalstone/blob/main/docs/ROADMAP.md).
+
+## Built
+
+- Site + learning center (this site).
+
+## Next, in order
+
+1. **Library core** — datasets, deterministic checks, targets, suites, runs,
+   gates; judge adapters; RAG, safety, pairwise and trajectory checks; CLI;
+   PyPI `0.1.0`.
+2. **Integrations** — MCP server, pytest plugin, GitHub Action, terminal labeling.
+3. **Center API** — organizations, projects, datasets, catalog, runs, labeling,
+   calibration, monitoring; docker-compose for self-hosting.
+4. **Center web.**
+5. **Hosted demo.**
+
+## Deferred
+
+- TypeScript library (HTTP + MCP cover non-Python callers first).
+- Fine-tuning execution (the iteration log tracks runs; it does not train weights).
+
+## Follow along
+
+Every commit, decision record and issue is public on
+[GitHub](https://github.com/marceloribeiro/evalstone). Open an issue with the
+eval problem you are stuck on; that is how the chapters get better.

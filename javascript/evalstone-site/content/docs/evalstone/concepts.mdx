@@ -1,0 +1,78 @@
+---
+title: Concepts
+description: The vocabulary Evalstone uses, and how the pieces relate.
+---
+
+These names are used consistently across the library, the API, the web app
+and these docs.
+
+## Dataset, DatasetVersion, Sample
+
+A **Dataset** is a named collection of **Samples**. A Sample is an `input`
+(any JSON: a string, a messages array, a form), an optional `expected`
+reference, free-form `metadata`, `tags`, and a `source` (`manual`,
+`harvested`, `synthetic`). A **DatasetVersion** is an immutable,
+content-hashed snapshot; runs always pin a version.
+
+## Check, Score
+
+A **Check** evaluates one output for one sample and returns a **Score**:
+`value` in 0..1, `passed`, a `reason`, the `cost_usd` and `latency_ms` it
+took, and an `error` when it could not score. `kind` is one of
+`deterministic`, `judge`, `human`, `comparison`, `trajectory`, `rag`,
+`safety`. Checks are versioned; judge checks are frozen as a
+**JudgeVersion** (rubric, model, few-shots).
+
+## Suite, Gate
+
+A **Suite** is an ordered list of checks over a dataset version plus a
+**Gate**: `min_pass_rate`, `min_mean_score`, `max_regression` versus a
+baseline, `max_cost_usd`, `max_error_rate`.
+
+## Target
+
+What produces outputs: a Python `callable`, an `http` endpoint, a `prompt`
+(model + template), or `recorded` outputs you already have.
+
+## Run, Result
+
+A **Run** is one suite executed against one target. It records the dataset
+version, the target, the git SHA, the trigger (`cli`, `ci`, `api`, `mcp`,
+`monitor`), a summary, and a `baseline_run_id` it was compared to. A
+**Result** is one sample × one check inside a run: the output, the score,
+the verdict, the reason, cost, latency, error.
+
+## Label, LabelTask
+
+A **Label** is a human grade on an output (score, pass, notes, or the winner
+of a pairwise comparison). **LabelTasks** are queued work for people: grade,
+compare, or verify an expected value.
+
+## Calibration
+
+Agreement between a JudgeVersion and a set of human labels: exact agreement,
+Cohen's kappa, a confusion matrix, and `n`. A judge is promoted when its
+calibration clears a threshold.
+
+## Trace, Monitor, Alert
+
+A **Trace** is one production exchange ingested for monitoring (input,
+output, metadata). A **Monitor** applies checks to a sample of traces with
+an alert policy over a window. An **Alert** is a breach.
+
+## Organization, Project, IngestKey
+
+The center is multi-tenant: **Organizations** hold members and **Projects**;
+a Project is one LLM feature under evaluation. An **IngestKey** is a
+per-project key the library, CI and proxies use to push runs and traces
+(stored hashed, shown once).
+
+```
+Organization ─┬─ Project ─┬─ Dataset ─── DatasetVersion ─── Sample
+              │           ├─ Check / JudgeVersion ─── Calibration
+              │           ├─ Suite ─── Run ─── Result
+              │           ├─ LabelTask ─── Label
+              │           ├─ Monitor ─── Alert      Trace
+              │           └─ IngestKey
+              └─ Member / Invitation
+```

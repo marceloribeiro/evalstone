@@ -1,0 +1,29 @@
+---
+title: Evals 101
+description: A short course on evaluating LLM features, for people who ship them.
+---
+
+Nine chapters, each a few minutes. Read them in order the first time; each one
+builds on the previous. Nothing here requires Evalstone; the concepts apply to
+any tool, including a spreadsheet.
+
+<Cards>
+  <Card title="1 · What are evals?" href="/docs/learn/what-are-evals" description="Tests for a system that does not answer the same way twice." />
+  <Card title="2 · Why you need them" href="/docs/learn/why-you-need-them" description="The regressions you did not see." />
+  <Card title="3 · The eval loop" href="/docs/learn/the-eval-loop" description="Dataset → run → inspect → fix → re-run → gate." />
+  <Card title="4 · Kinds of checks" href="/docs/learn/kinds-of-checks" description="When to use rules, judges, humans, comparisons." />
+  <Card title="5 · Building a golden set" href="/docs/learn/building-a-golden-set" description="Harvest, label, split, version." />
+  <Card title="6 · LLM-as-judge done right" href="/docs/learn/llm-as-judge" description="Rubrics, bias, calibration, cost." />
+  <Card title="7 · Gates and CI" href="/docs/learn/gates-and-ci" description="What to block a pull request on." />
+  <Card title="8 · Evals in production" href="/docs/learn/evals-in-production" description="Sampling, monitors, drift." />
+  <Card title="9 · Pitfalls" href="/docs/learn/pitfalls" description="The ways evals go green while the product is broken." />
+</Cards>
+
+## The one-paragraph version
+
+An LLM feature is a function whose output you cannot predict exactly, so you
+cannot assert equality like a unit test. Instead you keep a **dataset** of
+representative inputs, **run** your feature over all of them, **check** each
+output with a rule, a model, or a person, and turn the scores into a **gate**:
+a yes or no that a change is good enough to ship. Then you do it again every
+time something changes. That loop is "evals".

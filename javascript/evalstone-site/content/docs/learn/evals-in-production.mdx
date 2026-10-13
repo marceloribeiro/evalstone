@@ -1,0 +1,68 @@
+---
+title: Evals in production
+description: Sampling, monitors, drift, and avoiding alert fatigue.
+---
+
+Offline evals answer "is this change good?". Production evals answer "is
+the thing users are getting right now good?". The second question has a
+different shape: no references, unbounded inputs, and a cost you pay
+continuously.
+
+## What you can score without a reference
+
+Most of the checks from [chapter 4](/docs/learn/kinds-of-checks) do not need
+an expected answer:
+
+- Format and schema validity.
+- Faithfulness to the retrieved context (the context is right there).
+- Answer relevance to the question.
+- Refusal when it should not refuse, and vice versa.
+- Agent trajectory properties (loops, step count, tool misuse).
+- Judge-scored helpfulness and tone against the same rubric you calibrated.
+
+Those are enough to see quality move.
+
+## Sample, do not score everything
+
+Scoring 100% of traffic with an LLM judge doubles your model bill. Score a
+**sample**: 1–5% uniformly, plus 100% of anything a cheap rule flags
+(schema failure, refusal, long trajectory, user thumbs-down). The uniform
+sample gives you the trend; the flagged set gives you the cases to harvest.
+
+## Monitors
+
+A **monitor** is a standing eval over a stream: which checks, what sample
+rate, and an alert policy over a window. "Faithfulness mean over the last
+hour, alert if below 0.85 for two consecutive windows." The window and the
+two-strikes rule are what keep it from paging you on noise.
+
+Record the **trend**, not just the alert. The graph of faithfulness by day,
+annotated with deploys and model changes, is the single most persuasive
+artifact when someone asks whether the feature is getting better.
+
+## Drift
+
+Three things drift and you want to tell them apart:
+
+| What moved | How you notice | What to do |
+| --- | --- | --- |
+| The inputs (users ask new things) | Monitor scores drop, offline suite still green | Harvest, label, add to the golden set |
+| The model (provider update) | Nightly run on `main` moves without a code change | Re-run the comparison, decide, update baseline |
+| Your code | Scores move right after a deploy | The PR gate should have caught it; add the samples |
+
+## Privacy and retention
+
+Production inputs may contain personal data. Decide what the eval layer may
+keep: only scores and hashes, or the text too, and for how long. Score in
+memory where you can; persist text only where someone has decided it is
+allowed. Keep the judge's reason; it is useful and rarely sensitive.
+
+## Closing the loop
+
+Production monitoring is where the golden set grows. Low-scoring, flagged
+and random samples flow into a labeling queue; people grade them; the
+graded ones become the next dataset version; the next nightly run measures
+against a set that looks like last week's traffic. That loop is what makes
+evals a practice rather than a project.
+
+Next: [Pitfalls](/docs/learn/pitfalls).

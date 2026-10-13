@@ -1,0 +1,76 @@
+---
+title: Gates and CI
+description: Thresholds, baselines, flakiness, and what to actually block a pull request on.
+---
+
+A **gate** turns a run into a decision. In CI it is the difference between
+"someone should look at the eval dashboard" and "this pull request is red".
+Getting the gate right is mostly about choosing what *not* to block on.
+
+## Three kinds of threshold
+
+**Absolute.** "Pass rate ≥ 95%", "faithfulness mean ≥ 0.9". Simple, and the
+right choice for hard requirements (schema validity, safety).
+
+**Relative to baseline.** "No metric drops more than 2 points versus the
+last run on `main`." This is the one that catches regressions, and it only
+works if runs pin their dataset version so the comparison is like for like.
+
+**Budget.** "Total cost under $3", "p95 latency under 4 s". Quality
+regressions often arrive with cost regressions; gate both.
+
+A good gate has all three: a floor you never go below, a tolerance for
+movement, and a cap on what it costs.
+
+## What to block on
+
+Block on things that are **deterministic or calibrated**:
+
+- Schema and format checks: always block.
+- Safety suite: always block, separately, with its own report.
+- Calibrated judge metrics: block on regression beyond tolerance.
+- Cost and latency budgets: block.
+
+Do **not** block on:
+
+- An uncalibrated judge. You will be blocking on noise, and the team will
+  learn to ignore red.
+- A single sample. One flipped sample out of 200 is within judge variance.
+  Gate on aggregates, and surface the flipped samples in the report.
+- Tags with fewer than ~30 samples. Report them; do not gate on them.
+
+## Flakiness
+
+An LLM feature run twice gives slightly different scores. A gate with a
+tolerance of zero fails randomly and teaches everyone to re-run until green.
+Measure your noise floor: run the same code three times, look at the
+spread, and set the tolerance above it. Judges at temperature 0 with a
+cache remove the judge's share of the noise; the feature's own
+non-determinism remains.
+
+## The baseline
+
+The baseline is the run that `main` produced on the same dataset version.
+Store it, name it, and let the gate compare against it. When a pull request
+*intentionally* changes behaviour (new model, new policy) and regresses some
+samples on purpose, the merge updates the baseline. The report should make
+that explicit: "12 regressions, 31 improvements, baseline will move".
+
+## Where the gate runs
+
+- **Pre-commit / local.** The inner-loop subset (30 samples), deterministic
+  checks only, seconds.
+- **Pull request.** Full dataset, all checks, judge cache warm, a comment
+  on the PR with the summary and the flipped samples.
+- **Nightly on `main`.** Same suite, no code change. If this moves, the
+  provider moved; you want to know before a user does.
+- **Pre-release.** The held-out slice you never iterate on.
+
+## The report
+
+A red gate is only useful if the next click shows *why*. The minimum
+report: per-check pass rate versus baseline, cost, and the list of samples
+that flipped, grouped by tag, each with its output, its score and the
+judge's reason. That is what turns "the eval failed" into a fix.
+
+Next: [Evals in production](/docs/learn/evals-in-production).

@@ -1,0 +1,34 @@
+---
+title: Welcome
+description: What Evalstone is, who it is for, and how to read these docs.
+---
+
+Evalstone is the **plug-and-play evals layer for LLM-based projects**. It is open
+source (MIT) and built in the open. These docs have two halves:
+
+<Cards>
+  <Card title="Learn evals" href="/docs/learn" description="Evals 101 — nine short chapters that teach what evals are, why they matter and how to run them. No Evalstone required." />
+  <Card title="Evalstone" href="/docs/evalstone" description="How Evalstone helps: the concepts, the library, the center, the MCP server, and the roadmap." />
+</Cards>
+
+## Who this is for
+
+- You ship an LLM feature (a chatbot, a RAG answerer, an extraction prompt, an
+  agent) and you decide whether it is "good" by trying a few prompts.
+- You already have some evals and want shared golden sets, a judge you can
+  trust, a gate in CI, and a view of production quality.
+- You are learning, and want the concepts explained before the API.
+
+## Status
+
+| Piece | Status |
+| --- | --- |
+| Site + learning center | **Live** — this site |
+| Library + CLI (`pip install evalstone`) | Building |
+| MCP server · pytest plugin · GitHub Action | Building |
+| Center (API + web) | Planned |
+
+The order and the reasoning are in the
+[roadmap](https://github.com/marceloribeiro/evalstone/blob/main/docs/ROADMAP.md).
+Pages about unbuilt pieces say so at the top and describe the *design*, not a
+shipped product.

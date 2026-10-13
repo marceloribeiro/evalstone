@@ -1,0 +1,60 @@
+---
+title: Why you need them
+description: The regressions you did not see, and the cost of finding them from users.
+---
+
+## The four ways an LLM feature degrades without anyone changing it on purpose
+
+**Prompt drift.** Prompts accumulate edits. Someone adds "always be concise"
+to fix one complaint and quietly breaks the long-form answers that half the
+users wanted. Without a dataset that includes both kinds of question, the
+fix looks like a win.
+
+**Model updates.** Providers deprecate models and ship new snapshots. The
+replacement is better on average and different in detail: it formats lists
+differently, refuses a category it used to answer, or stops following an
+instruction you relied on. If you only find out from a support ticket, you
+have no idea *when* it started or *how much* changed.
+
+**Retrieval changes.** In a RAG system, re-indexing documents, changing the
+chunk size, or swapping the embedding model changes what the model sees. The
+prompt is untouched, the answers are different.
+
+**Scope creep in inputs.** Users do not stay inside the cases you tested.
+The distribution of real questions moves; the feature that handled launch
+traffic beautifully is now 20% off-distribution.
+
+## What it costs to find out from users
+
+- **Trust.** A user who gets a confidently wrong answer about a refund
+  does not report it. They stop using the feature.
+- **Time.** Debugging "it got worse" without a baseline is archaeology. With
+  a baseline run it is a diff: these 11 samples changed, here is what they
+  had in common.
+- **Money.** Quality regressions often ride along with cost regressions:
+  a longer system prompt, a looping agent, a judge that re-runs on every
+  request. An eval that reports cost per run catches both.
+
+## What evals give you instead
+
+| Without | With |
+| --- | --- |
+| "I tried a few prompts, looks fine" | 60 real inputs, 3 checks, a number |
+| "Something changed last week?" | Run 48 vs run 47: faithfulness 0.93 → 0.86, 9 samples regressed |
+| Model upgrade is a leap of faith | Run both models on the same dataset, compare, choose |
+| Judge quality is a feeling | Judge agrees with human labels 91% of the time, measured |
+| Production quality is unknown | 2% of live traffic scored, trend visible, alert on drop |
+
+## When you should start
+
+Earlier than feels justified. The first dataset can be 20 inputs you wrote
+yourself in an afternoon. It will be wrong in places and that is fine: the
+point is to make the next prompt change *measurable*. You grow the dataset
+from real traffic later ([chapter 5](/docs/learn/building-a-golden-set)).
+
+The teams that skip this are not lazy. They skip it because evals used to
+require building a harness, a dataset format, a judge, a results store and a
+CI integration from scratch. That is the part Evalstone takes off your plate;
+the thinking in these chapters is the part that stays yours.
+
+Next: [The eval loop](/docs/learn/the-eval-loop).

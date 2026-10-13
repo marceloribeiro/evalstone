@@ -1,0 +1,81 @@
+---
+title: The eval loop
+description: Dataset → run → inspect → fix → re-run → gate. Small loop, run often.
+---
+
+## The loop
+
+```
+dataset ──► run ──► inspect ──► fix ──► re-run ──► gate ──► ship
+   ▲                                                   │
+   └───────────── harvest new cases ◄──────────────────┘
+```
+
+Every step is cheap on its own. The value comes from going around it many
+times, so the loop has to stay fast enough that you actually do.
+
+### 1. Dataset
+
+Start with what you have: a handful of real questions from logs, the cases
+from your bug tracker, the examples in the prompt itself. Each **sample** is
+an input plus, when you can, a reference: the expected answer, the required
+facts, the correct JSON. Tag samples (`refund`, `long-form`, `edge`) so you
+can slice results later.
+
+### 2. Run
+
+Send every sample through the feature *as it is deployed*: same prompt
+version, same model, same retrieval. Record the output and the context
+(commit, model, cost, latency). A run that does not pin what produced it
+cannot be compared to the next one.
+
+### 3. Inspect
+
+Look at the failures, not the pass rate. Ten failures grouped by tag usually
+tell one story: "all the multi-part questions lose the second part", "every
+refund answer invents a deadline". The pass rate is a summary; the samples
+are the information.
+
+### 4. Fix
+
+Change one thing. A prompt line, a retrieval parameter, the model. One
+change per run keeps the diff interpretable.
+
+### 5. Re-run and compare
+
+Same dataset version, new code. The interesting output is the **diff**: which
+samples flipped from pass to fail (regressions), which flipped the other
+way, what the cost did. Improvements that come with regressions are the
+normal case; the diff is how you decide whether the trade is worth it.
+
+### 6. Gate
+
+Encode the decision so a machine can make it next time: pass rate above a
+threshold, no regression beyond a tolerance, cost under a cap. The gate is
+what runs in CI ([chapter 7](/docs/learn/gates-and-ci)).
+
+### 7. Harvest
+
+Production will find inputs your dataset did not have. Pull them in: the
+ones users flagged, the ones a monitor scored low, a random sample. Label
+them, add them, bump the dataset version. The loop gets smarter.
+
+## How often
+
+- **On every prompt or retrieval change:** the full suite, locally or in CI.
+- **Nightly:** the full suite against `main`, so model-side drift shows up
+  as a trend even when nobody changed anything.
+- **Continuously in production:** a sampled subset of checks over live traffic
+  ([chapter 8](/docs/learn/evals-in-production)).
+
+## Keeping the loop fast
+
+- **Cheap checks first.** Rules and schema checks cost nothing; run them
+  before any model-based judge, and let a hard failure skip the expensive
+  checks.
+- **Cache judge calls.** The same (judge, input, output) triple always
+  produces the same verdict at temperature 0; never pay for it twice.
+- **Small dataset for the inner loop, full dataset for the gate.** 30 samples
+  while you iterate, 300 before you merge.
+
+Next: [Kinds of checks](/docs/learn/kinds-of-checks).
