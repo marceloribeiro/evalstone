@@ -14,6 +14,7 @@ from rich.markup import escape
 from rich.table import Table
 
 from evalstone import __version__
+from evalstone.center import CenterError
 from evalstone.config import CONFIG_FILENAME, Config
 from evalstone.providers import ProviderError
 from evalstone.run import DEFAULT_FAILURES, Run, compare
@@ -147,18 +148,35 @@ def run(
         except ProviderError as exc:
             err.print(f"[red]--judge-model: {escape(str(exc))}[/red]")
             raise typer.Exit(2) from None
+    try:
+        ctx = cfg.context(judge_model=judge_model)
+    except CenterError as exc:
+        err.print(f"[red]{escape(str(exc))}[/red]")
+        raise typer.Exit(2) from None
     with console.status(f"running {suite} over {len(s.dataset)} samples…"):
-        result = s.run(
-            target, baseline=base, trigger="cli", ctx=cfg.context(judge_model=judge_model)
-        )
+        result = s.run(target, baseline=base, trigger="cli", ctx=ctx)
     console.print(_run_table(result))
     _print_failures(result, failures)
     _print_gate(result)
     out = report or (cfg.root / cfg.report)
     result.to_json(out)
     console.print(f"\nreport → {out}")
+    _push_to_center(cfg, result)
     if strict and result.gate_passed is False:
         raise typer.Exit(1)
+
+
+def _push_to_center(cfg: Config, result: Run) -> None:
+    """Attached projects store every run in the center; a push failure warns, never fails."""
+    if cfg.center is None or not cfg.center.push_runs:
+        return
+    try:
+        stored, created = cfg.center_client().push_run(json.loads(result.to_json()))
+    except Exception as exc:
+        err.print(f"[yellow]center: run not pushed — {escape(str(exc))}[/yellow]")
+        return
+    verb = "stored" if created else "already stored"
+    console.print(f"center → run {stored.get('id', '?')} {verb} ({cfg.center.url})")
 
 
 @app.command()

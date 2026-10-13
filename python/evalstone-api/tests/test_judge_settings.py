@@ -84,3 +84,21 @@ def test_model_for_prefers_override():
     assert svc.model_for(s, "rag.faithfulness") == "anthropic/o"
     assert svc.model_for(s, "judge") == "openai/d"
     assert svc.model_for(JudgeSettings(default_model=None, overrides={}), "judge") is None
+
+
+def test_ingest_key_can_read_but_not_write_judge_settings(client, project):
+    h = project["headers"]
+    _prov(client, project["org"], "openai")
+    client.put(
+        f"/projects/{project['id']}/judge-settings", json={"default_model": "openai/x"}, headers=h
+    )
+    secret = client.post(
+        f"/projects/{project['id']}/ingest-keys", json={"name": "ci"}, headers=h
+    ).json()["key"]
+    kh = {"Authorization": f"Bearer {secret}"}
+    r = client.get(f"/projects/{project['id']}/judge-settings", headers=kh)
+    assert r.status_code == 200 and r.json()["default_model"] == "openai/x"
+    assert (
+        client.put(f"/projects/{project['id']}/judge-settings", json={}, headers=kh).status_code
+        == 401
+    )

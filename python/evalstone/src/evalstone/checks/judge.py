@@ -134,7 +134,8 @@ def judge(
         providers = ctx.providers
         if providers is None:
             return Score.errored("judge: no providers configured (ctx.providers is None)")
-        chosen = ctx.judge_model or model  # a run-time override beats the check's own model
+        # --judge-model > the project's per-check override (center) > the check's own model
+        chosen = ctx.judge_model or (ctx.extra.get("judge_models") or {}).get(key) or model
         try:
             resolved = "/".join(providers.split(chosen))
         except ProviderError as exc:

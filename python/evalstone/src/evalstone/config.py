@@ -29,6 +29,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
+from evalstone.center import CenterCache, CenterClient, CenterConfig, CenterProviders
 from evalstone.checks import comparison, deterministic, rag, registry, safety, trajectory
 from evalstone.checks.human import human as human_factory
 from evalstone.checks.judge import judge as judge_factory
@@ -70,18 +71,43 @@ class Config(BaseModel):
     suites: dict[str, SuiteConfig] = Field(default_factory=dict)
     providers: dict[str, ProviderConfig] = Field(default_factory=dict)
     judges: JudgesConfig = Field(default_factory=JudgesConfig)
+    center: CenterConfig | None = None  # attached: keys, judge model and cache live there
     # model → (USD per 1M input tokens, USD per 1M output tokens); overrides the built-in table
     prices: dict[str, tuple[float, float]] = Field(default_factory=dict)
     report: str = "evalstone-report.json"
     root: Path = Field(default=Path("."), exclude=True)
-    _providers: Providers | None = None
+    _providers: Providers | CenterProviders | None = None
+    _center_client: CenterClient | None = None
+    _judge_settings: dict[str, Any] | None = None
 
-    def provider_registry(self) -> Providers:
-        """One ``Providers`` per config (adapters are created lazily, keys read from env)."""
+    @property
+    def attached(self) -> bool:
+        return self.center is not None
+
+    def center_client(self) -> CenterClient:
+        if self.center is None:
+            raise ValueError("this project is not attached to a center (no `center:` block)")
+        if self._center_client is None:
+            self._center_client = CenterClient(self.center)
+        return self._center_client
+
+    def judge_settings(self) -> dict[str, Any]:
+        """The center's judge settings for this project, fetched once per config."""
+        if self._judge_settings is None:
+            self._judge_settings = self.center_client().judge_settings()
+        return self._judge_settings
+
+    def provider_registry(self) -> Providers | CenterProviders:
+        """One registry per config: the center's proxy when attached, else local adapters."""
         if self._providers is None:
-            self._providers = Providers(
-                self.providers, default_model=self.judges.default_model, prices=self.prices
-            )
+            if self.center is not None:
+                self._providers = CenterProviders(
+                    self.center_client(), default_model=self.judge_settings().get("default_model")
+                )
+            else:
+                self._providers = Providers(
+                    self.providers, default_model=self.judges.default_model, prices=self.prices
+                )
         return self._providers
 
     def context(self, *, judge_model: str | None = None) -> Context:
@@ -89,9 +115,19 @@ class Config(BaseModel):
 
         ``judge_model`` overrides every judge's model for this context only (the
         CLI's ``--judge-model``) — judges and pairwise comparisons, never the target
-        under test: the same suite, a different judge, one flag.
+        under test: the same suite, a different judge, one flag. Attached, the cache is
+        the center's and the project's per-check judge models ride in ``extra``.
         """
-        return Context(providers=self.provider_registry(), judge_model=judge_model)
+        if self.center is None:
+            return Context(providers=self.provider_registry(), judge_model=judge_model)
+        client = self.center_client()
+        settings = self.judge_settings()
+        return Context(
+            providers=self.provider_registry(),
+            judge_model=judge_model,
+            cache=CenterCache(client) if self.center.cache else Context().cache,
+            extra={"center_client": client, "judge_models": dict(settings.get("overrides") or {})},
+        )
 
     # ── loading ──────────────────────────────────────────────────────────
 
@@ -138,7 +174,10 @@ class Config(BaseModel):
                 known = ", ".join(sorted(FACTORIES))
                 raise ValueError(f"check {key!r}: unknown type {kind!r} (known: {known})")
             if kind == "human":  # the labels file lives relative to evalstone.yaml
-                spec["labels"] = self.root / spec.get("labels", "labels.jsonl")
+                if self.center is not None and "labels" not in spec:
+                    spec["labels"] = "center"  # attached: labels live in the center
+                else:
+                    spec["labels"] = self.root / spec.get("labels", "labels.jsonl")
             baseline = spec.get("baseline")
             if kind == "comparison.pairwise" and isinstance(baseline, dict) and "kind" in baseline:
                 spec["baseline"] = self.target(baseline)  # a target spec → a Target

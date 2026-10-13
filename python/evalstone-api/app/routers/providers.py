@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import (
     MemberContext,
+    ProjectActor,
     ProjectContext,
     get_member,
-    get_project_member,
+    get_project_actor,
     require,
     require_project,
 )
@@ -88,9 +89,10 @@ def test_provider(
 
 @router.get("/projects/{project_id}/judge-settings", response_model=JudgeSettingsOut)
 def get_judge_settings(
-    ctx: ProjectContext = Depends(get_project_member), db: Session = Depends(get_db)
+    actor: ProjectActor = Depends(get_project_actor), db: Session = Depends(get_db)
 ):
-    return judge_svc.get_or_default(db, ctx.project)
+    """Members or the project's ingest key: an attached library reads these to pick models."""
+    return judge_svc.get_or_default(db, actor.project)
 
 
 @router.put("/projects/{project_id}/judge-settings", response_model=JudgeSettingsOut)
