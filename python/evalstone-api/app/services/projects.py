@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.errors import Conflict, Invalid, NotFound
 from app.models import IngestKey, Organization, Project, User
-
 from app.security import hash_ingest_key, new_ingest_key
 
 LAST_USED_RESOLUTION = timedelta(seconds=60)  # ingest is the hot path; one stamp per minute
