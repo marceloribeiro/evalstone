@@ -3,6 +3,7 @@
 from app.models.base import Base, TimestampedModel
 from app.models.dataset import Dataset, DatasetVersion, DatasetVersionSample, Sample
 from app.models.label import JudgeCacheEntry, Label
+from app.models.model_call import ModelCall
 from app.models.organization import Organization, OrganizationInvitation, OrganizationMember, Role
 from app.models.project import IngestKey, Project
 from app.models.provider import ADAPTERS, JudgeSettings, Provider
@@ -19,6 +20,7 @@ __all__ = [
     "JudgeCacheEntry",
     "JudgeSettings",
     "Label",
+    "ModelCall",
     "Organization",
     "OrganizationInvitation",
     "OrganizationMember",
