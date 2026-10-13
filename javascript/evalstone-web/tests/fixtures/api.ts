@@ -37,3 +37,11 @@ export async function newProject(seed: Seed, orgId: string, name: string): Promi
 export async function inviteMember(seed: Seed, orgId: string, email: string, role: "member" | "admin" = "member") {
   return authed(seed, "post", `/organizations/${orgId}/invitations`, { email, role });
 }
+
+/** Mint an ingest key through the API and push a library report with it (what `evalstone run` does). */
+export async function pushRun(seed: Seed, projectId: string, report: unknown) {
+  const { key } = (await authed(seed, "post", `/projects/${projectId}/ingest-keys`, { name: "spec" })) as { key: string };
+  const res = await seed.api.post(`/projects/${projectId}/runs`, { data: report, headers: { Authorization: `Bearer ${key}` } });
+  if (res.status() !== 201) throw new Error(`push run → ${res.status()} ${await res.text()}`);
+  return (await res.json()) as { id: string; client_run_id: string };
+}

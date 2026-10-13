@@ -28,18 +28,93 @@ export type IngestKey = {
 };
 export type IngestKeyCreated = IngestKey & { key: string };
 
-export type Run = {
-  id: string;
-  client_run_id: string;
-  suite: string;
+export type CheckSummary = {
+  key: string;
+  n: number;
+  passed: number;
+  errors: number;
+  skipped: number;
   pass_rate: number;
   mean_score: number;
   cost_usd: number;
-  result_count: number;
+};
+export type RunSummary = {
+  samples: number;
+  checks: number;
+  results: number;
+  passed: number;
+  errors: number;
+  skipped: number;
+  pass_rate: number;
+  mean_score: number;
+  error_rate: number;
+  cost_usd: number;
+  duration_ms: number;
+  per_check: CheckSummary[];
+  per_tag: Record<string, number>;
+};
+/** `RunOut` — one stored library report. */
+export type Run = {
+  id: string;
+  project_id: string;
+  client_run_id: string;
+  suite: string;
+  dataset_name: string;
+  dataset_hash: string;
+  dataset_version_id: string | null;
+  target: Record<string, unknown>;
+  check_keys: string[];
+  git_sha: string | null;
   trigger: string;
+  baseline_run_id: string | null;
+  client_baseline_run_id: string | null;
   started_at: string;
   finished_at: string;
+  summary: RunSummary;
+  pass_rate: number;
+  mean_score: number;
+  error_rate: number;
+  cost_usd: number;
+  duration_ms: number;
+  result_count: number;
+  gate_passed: boolean | null;
+  gate_lines: string[];
   is_baseline: boolean;
+  created_by_user_id: string | null;
+  created_at: string;
+};
+/** `ResultOut` — one (sample, check) row of a run. */
+export type RunResult = {
+  id: string;
+  sample_key: string;
+  check_key: string;
+  tags: string[];
+  input: unknown;
+  expected: unknown;
+  output: { value?: unknown; model?: string | null; latency_ms?: number; cost_usd?: number; error?: string | null } & Record<string, unknown>;
+  score: number;
+  passed: boolean;
+  reason: string;
+  cost_usd: number;
+  latency_ms: number;
+  error: string | null;
+  skipped: boolean;
+};
+/** The library's `Score` as it appears inside a comparison flip. */
+export type Score = { value: number; passed: boolean; reason: string; error: string | null; skipped: boolean };
+export type Flip = { sample_id: string; check_key: string; before: Score; after: Score };
+/** `GET /runs/{a}/compare/{b}`: run B relative to run A (the library's `compare()`). */
+export type Comparison = {
+  a: string;
+  b: string;
+  same_dataset: boolean;
+  pass_rate_delta: number;
+  mean_score_delta: number;
+  cost_delta: number;
+  regressions: Flip[];
+  improvements: Flip[];
+  only_in_a: string[];
+  only_in_b: string[];
 };
 export type Page<T> = { items: T[]; total: number; offset: number; limit: number };
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -117,7 +118,11 @@ export function ProjectOverview() {
         </Card>
         <Card className="lg:col-span-3">
           <CardHeader>
-            <CardTitle>Latest runs</CardTitle>
+            <CardTitle>
+              <Link href={`/o/${organization.id}/p/${project.id}/runs`} className="underline-offset-4 hover:underline">
+                Latest runs
+              </Link>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {runs.data && runs.data.items.length ? (
@@ -135,7 +140,11 @@ export function ProjectOverview() {
                   {runs.data.items.map((r) => (
                     <tr key={r.id} className="border-t">
                       <td className="py-1">{r.suite}</td>
-                      <td className="font-mono text-xs">{r.client_run_id}</td>
+                      <td className="font-mono text-xs">
+                        <Link href={`/o/${organization.id}/p/${project.id}/runs/${r.id}`} className="underline-offset-4 hover:underline">
+                          {r.client_run_id}
+                        </Link>
+                      </td>
                       <td>{(r.pass_rate * 100).toFixed(1)}%</td>
                       <td>{r.result_count}</td>
                       <td>{new Date(r.finished_at).toLocaleString()}</td>
