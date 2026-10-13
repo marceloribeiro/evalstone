@@ -96,6 +96,38 @@ def require_project(min_role: Role):
     return _gate
 
 
+@dataclass
+class ProjectActor:
+    """Who is acting on a project: a member (JWT, with a role) or the project's ingest key."""
+
+    project: Project
+    organization: Organization
+    user: User | None  # None when an ingest key is the caller
+    role: Role | None  # None for an ingest key
+
+    @property
+    def via_ingest_key(self) -> bool:
+        return self.user is None
+
+
+def get_project_actor(
+    project_id: uuid.UUID = Path(...),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    db: Session = Depends(get_db),
+) -> ProjectActor:
+    """Data-plane routes (datasets, runs): a member of the org, or this project's `es_…` key."""
+    if credentials is not None and credentials.credentials.startswith(INGEST_KEY_PREFIX):
+        project = project_service.resolve_ingest_key(db, credentials.credentials)
+        if project is None or project.id != project_id:
+            raise Unauthorized("unknown, revoked or wrong-project ingest key")
+        org = org_service.get_organization(db, project.organization_id)
+        return ProjectActor(project=project, organization=org, user=None, role=None)
+    ctx = get_project_member(project_id, get_current_user(credentials, db), db)
+    return ProjectActor(
+        project=ctx.project, organization=ctx.organization, user=ctx.user, role=ctx.role
+    )
+
+
 def get_ingest_project(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     db: Session = Depends(get_db),

@@ -12,3 +12,4 @@ bcrypt==5.0.0
 email-validator==2.3.0
 cryptography==50.0.2
 evalstone[anthropic]==0.1.1
+pgvector==0.5.1
