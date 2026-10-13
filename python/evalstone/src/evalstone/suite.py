@@ -84,6 +84,8 @@ class Suite:
                         sample_id=sample.id,
                         check_key=chk.key,
                         tags=sample.tags,
+                        input=sample.input,
+                        expected=sample.expected,
                         output=output,
                         score=score,
                     )

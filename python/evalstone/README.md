@@ -36,6 +36,20 @@ Judges and prompt targets need a provider key in the environment
 OpenAI-compatible base URL such as OpenRouter or Ollama via `providers:`).
 Without one, judge results are **errors, never passes**, and the gate fails.
 
+## Human labels
+
+```bash
+evalstone run nightly --report r.json
+evalstone label r.json --out evals/labels.jsonl      # p/f per output, or --scale 5
+```
+
+Labels are keyed by sample id **and** a hash of the output, so a changed answer
+never inherits an old grade; outputs whose target errored are not offered for
+grading. `--scale N` passes at N-1 (a 2-point scale at 2), as judges do. A
+`human` check (`{type: human, labels: evals/labels.jsonl}`, path relative to
+`evalstone.yaml`) scores from them; an unlabelled output is an error, never a
+pass. Labels are also the ground truth judges get calibrated against (center).
+
 ## pytest
 
 ```python

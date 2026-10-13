@@ -27,11 +27,14 @@ def _cell(text: str) -> str:
 
 
 class Result(BaseModel):
-    """One sample x one check."""
+    """One sample x one check. Carries the sample's input and reference so a report
+    is self-contained for review and labelling."""
 
     sample_id: str
     check_key: str
     tags: list[str] = Field(default_factory=list)
+    input: Any = None
+    expected: Any = None
     output: Output
     score: Score
 

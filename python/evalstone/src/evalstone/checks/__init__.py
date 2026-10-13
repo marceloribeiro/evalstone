@@ -15,6 +15,7 @@ from evalstone.checks.deterministic import (
     python,
     regex,
 )
+from evalstone.checks.human import human
 from evalstone.checks.judge import judge
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "comparison",
     "contains",
     "exact",
+    "human",
     "json_schema",
     "judge",
     "length",

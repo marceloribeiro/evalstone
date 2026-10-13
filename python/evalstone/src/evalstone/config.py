@@ -30,6 +30,7 @@ import yaml
 from pydantic import BaseModel, Field, field_validator
 
 from evalstone.checks import comparison, deterministic, rag, registry, safety, trajectory
+from evalstone.checks.human import human as human_factory
 from evalstone.checks.judge import judge as judge_factory
 from evalstone.dataset import Dataset
 from evalstone.gate import Gate
@@ -130,6 +131,8 @@ class Config(BaseModel):
             if factory is None:
                 known = ", ".join(sorted(FACTORIES))
                 raise ValueError(f"check {key!r}: unknown type {kind!r} (known: {known})")
+            if kind == "human":  # the labels file lives relative to evalstone.yaml
+                spec["labels"] = self.root / spec.get("labels", "labels.jsonl")
             baseline = spec.get("baseline")
             if kind == "comparison.pairwise" and isinstance(baseline, dict) and "kind" in baseline:
                 spec["baseline"] = self.target(baseline)  # a target spec → a Target
@@ -177,6 +180,7 @@ FACTORIES: dict[str, Callable[..., Any]] = {
     name: getattr(deterministic, name) for name in deterministic.__all__ if name != "python"
 }
 FACTORIES["judge"] = judge_factory  # judge(key, rubric, *, scale, model, …)
+FACTORIES["human"] = human_factory  # human(*, key, labels, check)
 # Dotted types for the other families: rag.faithfulness, safety.refusal,
 # trajectory.tool_called, comparison.pairwise, … — every factory accepts `key=`.
 for _mod in (rag, safety, trajectory, comparison):
