@@ -1,5 +1,4 @@
-import { ArrowRight } from 'lucide-react';
-import Link from 'next/link';
+import { ArrowLink } from '@/components/common/arrow-link';
 import { Section } from '@/components/common/section';
 
 const STEPS = [
@@ -34,13 +33,9 @@ export function WhatAreEvals() {
           </li>
         ))}
       </ol>
-      <Link
-        href="/docs/learn/what-are-evals"
-        className="mt-8 inline-flex items-center gap-2 font-medium text-accent-strong hover:underline dark:text-accent"
-      >
+      <ArrowLink href="/docs/learn/what-are-evals" className="mt-8 gap-2 text-base">
         Read the full chapter
-        <ArrowRight className="size-4" />
-      </Link>
+      </ArrowLink>
     </Section>
   );
 }

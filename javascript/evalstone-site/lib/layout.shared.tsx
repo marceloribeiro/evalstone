@@ -8,12 +8,17 @@ export function baseOptions(): BaseLayoutProps {
       title: <Logo />,
       url: '/',
     },
+    // One-page navigation: every link is a section of the homepage, plus one entry into
+    // the docs. On the homepage they sit in the header (and in the phone menu); on docs
+    // pages fumadocs lists them at the top of the sidebar, above the docs tree.
     links: [
-      { text: 'Learn evals', url: '/docs/learn', active: 'nested-url' },
-      { text: 'How it works', url: '/docs/evalstone/how-it-works', active: 'url', on: 'nav' },
-      { text: 'Evalstone', url: '/docs/evalstone', active: 'url' },
-      { text: 'Guides', url: '/docs/guides/quickstart', active: 'nested-url', on: 'nav' },
-      { text: 'Reference', url: '/docs/reference/cli', active: 'nested-url', on: 'nav' },
+      { text: 'The problem', url: '/#problem', active: 'none' },
+      { text: 'What evals are', url: '/#what-are-evals', active: 'none' },
+      { text: 'How it helps', url: '/#how-it-helps', active: 'none' },
+      { text: 'How it works', url: '/#how-it-works', active: 'none' },
+      { text: 'The model', url: '/#model-or-not', active: 'none' },
+      { text: 'Learn', url: '/#learn', active: 'none' },
+      { text: 'Docs', url: '/docs', active: 'nested-url' },
     ],
     githubUrl,
   };
