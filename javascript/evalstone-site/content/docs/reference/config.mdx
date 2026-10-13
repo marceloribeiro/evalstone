@@ -38,6 +38,16 @@ prices:                              # USD per 1M tokens (input, output); overri
   my-model: [1.0, 2.0]
 ```
 
+`providers.<name>` takes `base_url`, `api_key_env`, `api_key`, `headers`,
+`timeout` (and `max_tokens_param` for OpenAI-compatible servers). The `openai`
+adapter speaks to any OpenAI-compatible server, so OpenRouter, Ollama, vLLM or
+Groq are a `base_url` away. Keys come from the environment variable named by
+`api_key_env` (or the provider's default one); `api_key` sets one inline, which
+is for programmatic use — a key in a committed YAML is a committed key. Only
+models in the built-in price table (Claude models today) or under `prices:`
+count toward `max_cost_usd`; others are reported unpriced. The full picture:
+[How it works](/docs/evalstone/how-it-works).
+
 ## Targets
 
 | `kind` | Keys | Produces |
