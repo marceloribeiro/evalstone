@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.datasets import MAX_SAMPLES_PER_VERSION
+
 
 class DatasetIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -40,7 +42,7 @@ class SampleIn(BaseModel):
 
 
 class VersionIn(BaseModel):
-    samples: list[SampleIn] = Field(min_length=1, max_length=5000)
+    samples: list[SampleIn] = Field(min_length=1, max_length=MAX_SAMPLES_PER_VERSION)
     note: str = Field(default="", max_length=2000)
 
 

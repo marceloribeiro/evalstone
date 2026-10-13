@@ -104,7 +104,7 @@ def test_ingest_key_can_push_versions_for_its_project_only(client, project, regi
     other = client.post(
         f"/organizations/{project['org']['id']}/projects", json={"name": "Other"}, headers=h
     ).json()["id"]
-    assert client.get(f"/projects/{other}/datasets", headers=kh).status_code == 401
+    assert client.get(f"/projects/{other}/datasets", headers=kh).status_code == 404  # outsider
     # and a revoked key is refused
     kid = client.get(f"/projects/{pid}/ingest-keys", headers=h).json()[0]["id"]
     client.delete(f"/projects/{pid}/ingest-keys/{kid}", headers=h)
@@ -172,3 +172,93 @@ def test_embedding_column_exists_and_is_empty(db, client, project):
     db.refresh(row)
     assert len(row.embedding) == 1536
     assert uuid.UUID(str(row.id))
+
+
+# --- regressions from the #27 review ---------------------------------------------------------
+
+
+def test_concurrent_pushes_of_the_same_content_serialise(client, project, db):
+    """Two CI jobs push at once: one creates version 1, the other gets it back (no 409)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.models import DatasetVersion
+
+    pid, h = project["id"], project["headers"]
+    did = _ds(client, project)
+    url = f"/projects/{pid}/datasets/{did}/versions"
+
+    def push():
+        return client.post(url, json={"samples": RECORDS}, headers=h).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = sorted(pool.map(lambda _: push(), range(2)))
+    assert statuses == [200, 201], statuses
+    assert db.query(DatasetVersion).count() == 1
+    assert db.query(Sample).count() == 3
+
+
+def test_concurrent_new_samples_in_two_datasets_do_not_collide(client, project, db):
+    from concurrent.futures import ThreadPoolExecutor
+
+    pid, h = project["id"], project["headers"]
+    a, b = _ds(client, project, "a"), _ds(client, project, "b")
+
+    def push(did):
+        return client.post(
+            f"/projects/{pid}/datasets/{did}/versions", json={"samples": RECORDS}, headers=h
+        ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = sorted(pool.map(push, [a, b]))
+    assert statuses == [201, 201], statuses
+    assert db.query(Sample).count() == 3  # shared rows, inserted once
+
+
+def test_repush_refreshes_metadata_and_source_outside_the_hash(client, project):
+    pid, h = project["id"], project["headers"]
+    did = _ds(client, project)
+    url = f"/projects/{pid}/datasets/{did}/versions"
+    base = {"input": "q", "expected": "a"}
+    v1 = client.post(url, json={"samples": [base, {"input": "other"}]}, headers=h).json()
+    annotated = {**base, "metadata": {"src": "wiki", "reviewed": True}, "source": "harvested"}
+    r = client.post(url, json={"samples": [annotated]}, headers=h)
+    assert r.status_code == 201 and r.json()["version"] == 2  # content changed (one sample dropped)
+    rows = client.get(f"{url}/2/samples", headers=h).json()["items"]
+    assert (
+        rows[0]["metadata"] == {"src": "wiki", "reviewed": True}
+        and rows[0]["source"] == "harvested"
+    )
+    # the shared row was refreshed, so version 1 shows the annotation too (documented behaviour)
+    v1_rows = client.get(f"{url}/{v1['version']}/samples", headers=h).json()["items"]
+    assert v1_rows[0]["metadata"] == {"src": "wiki", "reviewed": True}
+
+
+def test_oversized_sample_is_rejected(client, project):
+    pid, h = project["id"], project["headers"]
+    did = _ds(client, project)
+    big = {"input": "x" * (svc.MAX_SAMPLE_BYTES + 1)}
+    r = client.post(f"/projects/{pid}/datasets/{did}/versions", json={"samples": [big]}, headers=h)
+    assert r.status_code == 422 and "bytes" in r.json()["detail"]
+
+
+def test_version_cap_comes_from_one_constant():
+    from app.schemas.datasets import VersionIn
+
+    field = VersionIn.model_fields["samples"]
+    assert any(
+        getattr(m, "max_length", None) == svc.MAX_SAMPLES_PER_VERSION for m in field.metadata
+    )
+
+
+def test_wrong_project_ingest_key_is_an_outsider_404_not_401(client, project):
+    pid, h = project["id"], project["headers"]
+    secret = client.post(f"/projects/{pid}/ingest-keys", json={"name": "ci"}, headers=h).json()[
+        "key"
+    ]
+    other = client.post(
+        f"/organizations/{project['org']['id']}/projects", json={"name": "Other"}, headers=h
+    ).json()["id"]
+    r = client.get(f"/projects/{other}/datasets", headers={"Authorization": f"Bearer {secret}"})
+    assert r.status_code == 404 and "WWW-Authenticate" not in r.headers
+    bad = client.get(f"/projects/{pid}/datasets", headers={"Authorization": "Bearer es_nope"})
+    assert bad.status_code == 401
