@@ -8,17 +8,18 @@ Engineering-focused snapshot. Not a product commitment.
   "Evals 101" course on evalstone.com.
 - **Library 0.1.0** (`python/evalstone`): datasets, deterministic / judge / RAG /
   safety / pairwise / trajectory checks, targets, suites, runs, gates, CLI,
-  provider adapters, `samples/rag-bot`. Shipped as PRs #1–#7. **PyPI publish
-  pending** the trusted-publisher setup (`.github/workflows/release.yml`).
+  provider adapters, `samples/rag-bot`. Shipped as PRs #1–#7. **On PyPI as
+  0.1.0** (2026-10-13, tag `lib-v0.1.0`, trusted publisher via
+  `.github/workflows/release.yml`).
+- **Integrations** — MCP server, pytest plugin, GitHub Action, terminal labeling. Shipped as PRs #8–#12, in 0.1.0.
 
 ## Next (in order)
 
-1. **Integrations** — MCP server, pytest plugin, GitHub Action, terminal labeling.
-2. **Center API** — orgs, projects, datasets + versions (pgvector dedup), run
+1. **Center API** — orgs, projects, datasets + versions (pgvector dedup), run
    history, catalog, labeling queues, judge calibration, trace ingest + monitors +
    alerts, WebSocket; `docker-compose.yml` for self-hosters.
-3. **Center web** — runs, datasets, labeling, judges, monitors.
-4. **Hosted demo** — api.evalstone.com + app.evalstone.com.
+2. **Center web** — runs, datasets, labeling, judges, monitors.
+3. **Hosted demo** — api.evalstone.com + app.evalstone.com.
 
 ## Deferred (tracked, honored)
 

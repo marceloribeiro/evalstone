@@ -20,15 +20,15 @@ export function StatusAndCta() {
               <p className="mt-1 font-medium">Site + learning center</p>
             </li>
             <li className="rounded-lg border border-fd-border p-4">
+              <span className="font-mono text-xs text-pass">live</span>
+              <p className="mt-1 font-medium">Library + CLI on PyPI (0.1.0)</p>
+            </li>
+            <li className="rounded-lg border border-fd-border p-4">
+              <span className="font-mono text-xs text-pass">live</span>
+              <p className="mt-1 font-medium">MCP server · pytest · GitHub Action · labeling</p>
+            </li>
+            <li className="rounded-lg border border-fd-border p-4">
               <span className="font-mono text-xs text-fd-muted-foreground">next</span>
-              <p className="mt-1 font-medium">Library + CLI on PyPI</p>
-            </li>
-            <li className="rounded-lg border border-fd-border p-4">
-              <span className="font-mono text-xs text-fd-muted-foreground">then</span>
-              <p className="mt-1 font-medium">MCP server · pytest · GitHub Action</p>
-            </li>
-            <li className="rounded-lg border border-fd-border p-4">
-              <span className="font-mono text-xs text-fd-muted-foreground">then</span>
               <p className="mt-1 font-medium">Center: API + web, self-hosted or hosted</p>
             </li>
           </ol>

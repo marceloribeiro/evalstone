@@ -8,9 +8,9 @@
 
 **Website + docs:** [evalstone.com](https://evalstone.com) · **Learn evals:** [evalstone.com/docs/learn](https://evalstone.com/docs/learn)
 
-> **Status:** the site and the learning center are live. The library's first
-> release (0.1.0) is complete in the repo and awaiting its PyPI publish; the
-> integrations and the center follow. See the [roadmap](docs/ROADMAP.md).
+> **Status:** the site and the learning center are live, and `evalstone` 0.1.0
+> is on PyPI (library, CLI, MCP server, pytest plugin, labeling) with the
+> GitHub Action alongside. The center follows. See the [roadmap](docs/ROADMAP.md).
 
 ## What it is
 
@@ -38,7 +38,7 @@ no database; the center API is the sole owner of PostgreSQL.
 | Path | What | Stack | Status |
 | --- | --- | --- | --- |
 | [`javascript/evalstone-site/`](javascript/evalstone-site) | evalstone.com — landing + learning docs | Next.js 16 · React 19 · Tailwind 4 · Fumadocs | **live** |
-| [`python/evalstone/`](python/evalstone) | Library · CLI (MCP server + pytest plugin in Phase 2) | Python 3.12+ · pydantic · httpx | **0.1.0 candidate** (PyPI publish pending) |
+| [`python/evalstone/`](python/evalstone) | Library · CLI · MCP server · pytest plugin · labeling | Python 3.12+ · pydantic · httpx | **0.1.0 on PyPI** |
 | `python/evalstone-api/` | The center API (sole database owner) | FastAPI · SQLAlchemy 2 · PostgreSQL 16 + pgvector · Redis · Celery | planned |
 | `javascript/evalstone-web/` | The center web app | Next.js 16 · React 19 · Tailwind 4 · shadcn | planned |
 | [`action/`](action) | GitHub Action: run a suite on PRs, comment, fail on the gate | composite action | **live** (dogfooded by `evals.yml`) |

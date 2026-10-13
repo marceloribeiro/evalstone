@@ -52,13 +52,13 @@ steps:
     with:
       suite: nightly
       working-directory: evals          # where evalstone.yaml lives
-      install: "evalstone[anthropic] @ git+https://github.com/marceloribeiro/evalstone.git@main#subdirectory=python/evalstone"   # until the PyPI publish; then "evalstone[anthropic]"
+      install: "evalstone[anthropic]"   # a pip spec: extras, a pin, a git URL or a path
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-The action installs evalstone (`install:` is a pip spec: a published name once
-it exists, a git URL as above, or a path inside a monorepo), runs the suite,
+The action installs evalstone (`install:` is a pip spec: the published name
+with extras or a pin, a git URL, or a path inside a monorepo), runs the suite,
 writes the report into the job summary, posts a PR comment (updated in place on
 every push) with the verdict, the per-check table and the failing samples, and
 fails the check when the gate does not pass. The comment needs a token that can
