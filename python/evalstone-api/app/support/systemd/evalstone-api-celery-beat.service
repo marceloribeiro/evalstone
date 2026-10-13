@@ -1,0 +1,18 @@
+[Unit]
+Description=Evalstone API Celery beat (scheduler)
+After=network.target redis-server.service
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/evalstone-api/current
+EnvironmentFile=/home/ubuntu/evalstone-api/current/.env
+Environment=PATH=/home/ubuntu/evalstone-api/current/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/ubuntu/evalstone-api/current/venv/bin/celery -A app.worker.celery_app beat --loglevel=INFO --schedule=/home/ubuntu/evalstone-api/shared/celerybeat-schedule
+StandardOutput=append:/home/ubuntu/evalstone-api/current/logs/celery-beat.log
+StandardError=append:/home/ubuntu/evalstone-api/current/logs/celery-beat.error.log
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
