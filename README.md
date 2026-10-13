@@ -40,7 +40,7 @@ no database; the center API is the sole owner of PostgreSQL.
 | --- | --- | --- | --- |
 | [`javascript/evalstone-site/`](javascript/evalstone-site) | evalstone.com — landing + learning docs | Next.js 16 · React 19 · Tailwind 4 · Fumadocs | **live** |
 | [`python/evalstone/`](python/evalstone) | Library · CLI · MCP server · pytest plugin · labeling | Python 3.12+ · pydantic · httpx | **on PyPI** |
-| `python/evalstone-api/` | The center API (sole database owner) | FastAPI · SQLAlchemy 2 · PostgreSQL 16 + pgvector · Redis · Celery | scaffold (health, Celery, migrations) |
+| `python/evalstone-api/` | The center API (sole database owner) | FastAPI · SQLAlchemy 2 · PostgreSQL 16 + pgvector · Redis · Celery | Phase 3 built — try it: [`QUICK_START.md`](QUICK_START.md) |
 | `javascript/evalstone-web/` | The center web app | Next.js 16 · React 19 · Tailwind 4 · shadcn | planned |
 | [`action/`](action) | GitHub Action: run a suite on PRs, comment, fail on the gate | composite action | **live** (dogfooded by `evals.yml`) |
 | [`docs/`](docs) | Architecture, roadmap, decisions | Markdown | — |

@@ -1,0 +1,34 @@
+name: Compose smoke
+
+on:
+  push:
+    branches: [main]
+    paths: ["docker-compose.yml", "env.docker.example", "python/evalstone-api/**", ".github/workflows/compose.yml"]
+  pull_request:
+    paths: ["docker-compose.yml", "env.docker.example", "python/evalstone-api/**", ".github/workflows/compose.yml"]
+
+jobs:
+  cold-start:
+    name: docker compose up from a clean checkout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: write .env
+        run: |
+          cp env.docker.example .env
+          sed -i "s/^DB_PASS=.*/DB_PASS=ci-postgres-pass/; s/^JWT_SECRET=.*/JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')/; s/^DOCS_PASSWORD=.*/DOCS_PASSWORD=ci-docs-pass/" .env
+          echo "PROVIDER_CREDS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> .env
+      - run: docker compose up -d --build --wait --wait-timeout 300
+      - run: docker compose ps
+      - name: the API answers and a user can register
+        run: |
+          curl -fsS localhost:8181/ready
+          curl -fsS -X POST localhost:8181/auth/register -H 'content-type: application/json' -d '{"email":"ci@example.com","password":"ci-password-1"}' | head -c 200
+      - name: the worker and beat are running
+        run: |
+          docker compose exec -T api celery -A app.worker.celery_app inspect ping --timeout 10
+          docker compose logs beat | grep -q "beat: Starting"
+      - if: always()
+        run: docker compose logs --no-color api worker beat | tail -100
+      - if: always()
+        run: docker compose down -v
