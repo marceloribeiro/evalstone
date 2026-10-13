@@ -18,3 +18,19 @@ def heartbeat() -> str:
     """Scheduled by beat every 5 minutes so a silent scheduler shows up in the logs."""
     log.info("heartbeat")
     return "alive"
+
+
+@celery_app.task(name="app.tasks.calibrate")
+def calibrate(calibration_id: str) -> str:
+    """Compute one judge calibration (queued by POST /projects/{id}/calibrations)."""
+    import uuid
+
+    from app.db import SessionLocal
+    from app.services import calibration as svc
+
+    db = SessionLocal()
+    try:
+        row = svc.run_job(db, uuid.UUID(calibration_id))
+        return row.status
+    finally:
+        db.close()

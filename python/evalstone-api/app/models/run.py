@@ -80,6 +80,8 @@ class RunResult(TimestampedModel):
     __table_args__ = (
         Index("uq_result_run_sample_check", "run_id", "sample_key", "check_key", unique=True),
         Index("ix_results_run_check_passed", "run_id", "check_key", "passed"),
+        Index("ix_results_check_judge_version", "check_key", "judge_version"),
+        Index("ix_results_sample_output", "sample_key", "output_hash"),
     )
 
     run_id: Mapped[uuid.UUID] = mapped_column(
@@ -92,6 +94,11 @@ class RunResult(TimestampedModel):
     input: Mapped[object | None] = mapped_column(JSONB, nullable=True)
     expected: Mapped[object | None] = mapped_column(JSONB, nullable=True)
     output: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    # the library's output hash of `output` — what labels are keyed by
+    output_hash: Mapped[str] = mapped_column(String(16), nullable=False)
+    # stamped from score.raw for judge verdicts (rubric+scale+model hash, provider-reported model)
+    judge_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    judge_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     score: Mapped[float] = mapped_column(Float, nullable=False)
     passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")

@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.errors import DomainError
 from app.routers import (
     auth,
+    calibration,
     catalog,
     datasets,
     health,
@@ -52,6 +53,7 @@ app.include_router(labels.router)
 app.include_router(model_proxy.router)
 app.include_router(catalog.router)
 app.include_router(label_queues.router)
+app.include_router(calibration.router)
 
 
 @app.exception_handler(DomainError)

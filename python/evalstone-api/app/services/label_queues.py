@@ -37,8 +37,7 @@ from app.services import runs as run_svc
 MAX_TASKS_PER_QUEUE = 5000
 
 
-def _hash_of(output_json: dict[str, Any]) -> str:
-    return output_hash(Output.model_validate(output_json))
+_hash_of = run_svc.output_hash_of  # one rule for hashing a stored output
 
 
 # --- building ---------------------------------------------------------------------------------
