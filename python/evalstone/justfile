@@ -1,0 +1,36 @@
+# evalstone — the library. Builder-convention justfile (no database: the library owns none).
+set dotenv-load := true
+
+venv := "venv/bin"
+
+# Install the package in editable mode with dev extras into ./venv.
+install:
+    test -d venv || python3.13 -m venv venv
+    {{venv}}/pip install -q --upgrade pip
+    {{venv}}/pip install -q -e ".[dev]"
+
+# Run the test suite.
+test:
+    {{venv}}/pytest
+
+# Lint (ruff check) without changing files.
+lint:
+    {{venv}}/ruff check .
+    {{venv}}/ruff format --check .
+
+# Tests + linters — run before pushing (same as CI).
+check: lint test
+
+# Auto-fix lint problems and format the code.
+formatters-fix:
+    {{venv}}/ruff check --fix .
+    {{venv}}/ruff format .
+
+# Python REPL with evalstone imported.
+console:
+    {{venv}}/python -i -c "import evalstone as es; print('evalstone', es.__version__, '— `es` is loaded')"
+
+# Build sdist + wheel into dist/.
+build:
+    {{venv}}/pip install -q build
+    {{venv}}/python -m build
