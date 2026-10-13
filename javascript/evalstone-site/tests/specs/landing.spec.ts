@@ -41,15 +41,19 @@ test.describe('Landing page', () => {
   test('the top nav reaches every section of the docs', async ({ page }) => {
     const home = new HomePage(page);
     await home.goto();
-    const nav = page.getByRole('navigation').first();
-    for (const [name, path] of [
-      ['Learn evals', '/docs/learn'],
-      ['How it works', '/docs/evalstone/how-it-works'],
-      ['Evalstone', '/docs/evalstone'],
-      ['Guides', '/docs/guides/quickstart'],
-      ['Reference', '/docs/reference/cli'],
+    for (const [name, path, heading] of [
+      ['Learn evals', '/docs/learn', 'Evals 101'],
+      ['How it works', '/docs/evalstone/how-it-works', 'How it works'],
+      ['Evalstone', '/docs/evalstone', 'How Evalstone helps'],
+      ['Guides', '/docs/guides/quickstart', 'Quickstart'],
+      ['Reference', '/docs/reference/cli', 'CLI'],
     ] as const) {
-      await expect(nav.locator(`a[href="${path}"]`).first()).toHaveText(name);
+      await home.goto();
+      const link = page.locator(`header a[href="${path}"]:visible`).first();
+      await expect(link).toHaveText(name);
+      await link.click();
+      await expect(page).toHaveURL(new RegExp(`${path.replace(/\//g, '\\/')}$`));
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
     }
   });
 
