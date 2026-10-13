@@ -34,6 +34,11 @@ class AnthropicProvider:
             kwargs["api_key"] = key
         self._client = anthropic.Anthropic(**kwargs)
 
+    def close(self) -> None:
+        close = getattr(self._client, "close", None)
+        if callable(close):
+            close()
+
     def complete(self, request: ChatRequest) -> ChatResponse:
         import anthropic
 

@@ -9,6 +9,7 @@ import typer
 import yaml
 from pydantic import ValidationError
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from evalstone import __version__
@@ -41,7 +42,7 @@ def _load(config: str) -> Config:
     try:
         return Config.load(config)
     except CONFIG_ERRORS as exc:
-        err.print(f"[red]{config}: {exc}[/red]")
+        err.print(f"[red]{escape(f'{config}: {exc}')}[/red]")
         raise typer.Exit(2) from None
 
 
@@ -49,7 +50,7 @@ def _load_run(path: Path) -> Run:
     try:
         return Run.from_json(path)
     except (OSError, ValidationError, ValueError) as exc:
-        err.print(f"[red]{path}: {exc}[/red]")
+        err.print(f"[red]{escape(f'{path}: {exc}')}[/red]")
         raise typer.Exit(2) from None
 
 
@@ -88,7 +89,7 @@ def _print_failures(run: Run, limit: int) -> None:
     console.print(f"\n[bold]{len(failures)} failing result(s)[/bold]{suffix}")
     for r in failures[:limit]:
         flag = "[red]error[/red]" if r.score.error else "[yellow]fail[/yellow]"
-        console.print(f"  {flag} {r.sample_id} · {r.check_key} · {r.score.reason}")
+        console.print(f"  {flag} {escape(f'{r.sample_id} · {r.check_key} · {r.score.reason}')}")
 
 
 def _print_gate(run: Run) -> None:
@@ -126,7 +127,7 @@ def run(
     try:
         s, target = cfg.suite(suite)
     except SUITE_ERRORS as exc:
-        err.print(f"[red]{exc}[/red]")
+        err.print(f"[red]{escape(str(exc))}[/red]")
         raise typer.Exit(2) from None
     base = _load_run(baseline) if baseline else None
     with console.status(f"running {suite} over {len(s.dataset)} samples…"):
@@ -261,7 +262,7 @@ def init(
     }
     existing = [str(p) for p in files if p.exists()]
     if existing:
-        err.print("[red]refusing to overwrite: " + ", ".join(existing) + "[/red]")
+        err.print("[red]refusing to overwrite: " + escape(", ".join(existing)) + "[/red]")
         raise typer.Exit(2)
     evals.mkdir(exist_ok=True)
     for path, content in files.items():
@@ -274,12 +275,12 @@ def init(
 @app.command()
 def mcp(config: str = ConfigOpt) -> None:
     """Serve this project's evals to an MCP client over stdio (Claude Code, Cursor, …)."""
-    from evalstone.mcp_server import serve
+    from evalstone.mcp_server import MissingExtra, serve
 
     try:
         serve(config)
-    except RuntimeError as exc:  # the SDK extra is missing
-        err.print(f"[red]{exc}[/red]")
+    except MissingExtra as exc:
+        err.print(f"[red]{escape(str(exc))}[/red]")
         raise typer.Exit(2) from None
 
 

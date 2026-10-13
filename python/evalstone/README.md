@@ -45,7 +45,8 @@ claude mcp add evalstone -- evalstone mcp      # run from the project directory
 
 Tools: `list_suites`, `run_suite`, `judge_output`, `record_sample`, `compare_runs`,
 `get_run`. The agent edits your prompt, runs the suite, reads the failures, and
-compares runs — the gate stays yours.
+compares runs — the gate stays yours. Report paths are relative to the directory
+holding `evalstone.yaml` (pass `--config` to serve a project from elsewhere).
 
 ## Concepts
 
