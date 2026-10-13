@@ -7,10 +7,13 @@ const YAML = `judges:
   default_model: anthropic/claude-haiku-5-5   # provider/model
 providers:                                    # keys come from the environment
   anthropic: { api_key_env: ANTHROPIC_API_KEY }
-  openai:    { api_key_env: OPENAI_API_KEY }  # or any OpenAI-compatible server:
-  # openai:  { base_url: https://openrouter.ai/api/v1, api_key_env: OPENROUTER_API_KEY }
-  # openai:  { base_url: http://localhost:11434/v1 }   # Ollama
-  gemini:    { api_key_env: GEMINI_API_KEY }`;
+  openai:    { api_key_env: OPENAI_API_KEY }
+  gemini:    { api_key_env: GEMINI_API_KEY }
+
+# The openai adapter speaks to any OpenAI-compatible server. Replace the
+# openai line above with one of these (one \`openai:\` entry per file):
+#   openai: { base_url: https://openrouter.ai/api/v1, api_key_env: OPENROUTER_API_KEY }
+#   openai: { base_url: http://localhost:11434/v1 }   # Ollama, no key`;
 
 const WITHOUT = [
   'Deterministic checks: exact, contains, regex, JSON schema, length, numeric tolerance',
@@ -26,6 +29,22 @@ const WITH = [
   'comparison.pairwise: a judge choosing between two outputs, both orders',
   'A prompt target, when the thing under test is a prompt run through a model',
 ];
+
+function BulletCard({ title, items, dot }: { title: string; items: string[]; dot: string }) {
+  return (
+    <div className="rounded-xl border border-fd-border bg-fd-card p-5">
+      <h3 className="font-semibold">{title}</h3>
+      <ul className="mt-3 space-y-2 text-sm leading-relaxed text-fd-muted-foreground">
+        {items.map((item) => (
+          <li key={item} className="flex gap-2">
+            <span aria-hidden className={`mt-2 size-1.5 shrink-0 rounded-full ${dot}`} />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function ModelOrNot() {
   return (
@@ -43,28 +62,8 @@ export function ModelOrNot() {
     >
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="space-y-6">
-          <div className="rounded-xl border border-fd-border bg-fd-card p-5">
-            <h3 className="font-semibold">No model needed</h3>
-            <ul className="mt-3 space-y-2 text-sm leading-relaxed text-fd-muted-foreground">
-              {WITHOUT.map((item) => (
-                <li key={item} className="flex gap-2">
-                  <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-fd-foreground/50" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="rounded-xl border border-fd-border bg-fd-card p-5">
-            <h3 className="font-semibold">Needs a model, yours</h3>
-            <ul className="mt-3 space-y-2 text-sm leading-relaxed text-fd-muted-foreground">
-              {WITH.map((item) => (
-                <li key={item} className="flex gap-2">
-                  <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-accent-strong" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <BulletCard title="No model needed" items={WITHOUT} dot="bg-fd-foreground/50" />
+          <BulletCard title="Needs a model, yours" items={WITH} dot="bg-accent-strong" />
         </div>
         <div className="space-y-4">
           <CodePanel title="evalstone.yaml" code={YAML} />
@@ -72,10 +71,12 @@ export function ModelOrNot() {
             Three adapters: <code>openai</code> speaks the OpenAI Chat Completions API to api.openai.com
             or to any compatible server you point <code>base_url</code> at (OpenRouter, Ollama, vLLM,
             Groq), <code>anthropic</code> uses the official SDK, <code>gemini</code> calls Google&apos;s
-            API. Keys are read from environment variables and never written to a config or a report.
-            Verdicts are cached by content, so an unchanged output is never re-judged; every call is
-            priced; a missing key or a failed call is an <strong>error, never a pass</strong>, and the
-            gate fails on error rate.
+            API. Keys are read from environment variables by default and never written to a report.
+            Verdicts are cached by content for the life of the process (the MCP server keeps its cache
+            for the whole session); a cache shared across runs comes with the center. Calls to models in
+            the built-in price table (Claude today) are priced, others are reported unpriced until you
+            add them under <code>prices:</code>. A missing key or a failed call is an{' '}
+            <strong>error, never a pass</strong>, and the gate fails on error rate.
           </p>
           <Link
             href="/docs/evalstone/how-it-works"

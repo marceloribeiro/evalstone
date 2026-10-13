@@ -3,6 +3,12 @@ title: How it works
 description: What runs with no model, what needs one, and how a judge reaches your provider.
 ---
 
+<Callout type="info" title="In the repository">
+  Everything on this page is built and tested in the repository; the PyPI
+  publish is pending, so install from the repo as the
+  [quickstart](/docs/guides/quickstart) shows.
+</Callout>
+
 Evalstone is a library that computes scores and decisions. It has no account,
 no proxy and no relay: when a check needs a model, the library calls the
 provider you configured, directly from the machine running the suite, with a
@@ -80,20 +86,28 @@ judges:
 
 Rules that hold for every adapter:
 
-- **Keys come from environment variables** (`api_key_env:` names which one).
-  They are never written to `evalstone.yaml`, a report or a cache.
-- **Verdicts are cached by content.** The cache key is the judge's version
-  (rubric, scale, model) plus the exact prompt, so an unchanged output on an
-  unchanged judge is never sent again. Re-running a suite after a code change
-  costs only the outputs that changed.
-- **Every call is priced** from a built-in table of USD per million tokens
-  (`prices:` overrides it), and the gate can cap `max_cost_usd`.
+- **Keys come from environment variables by default.** `api_key_env:` names
+  which one. A provider entry also accepts an inline `api_key:` for programmatic
+  or test use; it is excluded from every dump and report, but a key in a
+  committed `evalstone.yaml` is still a committed key, so prefer the
+  environment. The Anthropic adapter also lets the official SDK resolve a key
+  from its own login profile when neither is set.
+- **Verdicts are cached by content for the life of the process.** The cache key
+  is the judge's version (rubric, scale, model) plus the exact prompt, so within
+  one run — or one MCP server session, which keeps its cache across calls — an
+  unchanged output on an unchanged judge is never sent twice. Each `evalstone
+  run` is a new process with an empty cache; a cache shared across runs and
+  machines is part of the planned [center](/docs/evalstone/center).
+- **Calls are priced from a built-in table** of USD per million tokens, which
+  today lists Claude models. A model that is not in it is reported `unpriced`
+  and counts as zero toward `max_cost_usd`, so add your models under `prices:`
+  before relying on that cap.
 - **No key, a network error, a refusal, malformed JSON: an error, never a pass.**
   The gate's `max_error_rate` defaults to 0, so a judge outage fails the gate
   instead of hiding inside a pass rate.
 - **Thresholds live outside the cache.** A judge caches the model's raw level
   and reason; `pass_level` / `threshold` are applied on read, so changing the
-  bar does not re-spend.
+  bar within a process does not re-spend.
 
 ## Where the data goes
 

@@ -40,8 +40,7 @@ test.describe('Learning center', () => {
   test('Evalstone pages state their status honestly', async ({ page }) => {
     const docs = new DocsPage(page);
     await docs.goto('/evalstone/how-it-works');
-    await expect(docs.title).toHaveText('How it works');
-    await expect(page.getByText('No key, a network error, a refusal, malformed JSON', { exact: false })).toBeVisible();
+    await expect(page.getByText('In the repository', { exact: true })).toBeVisible();
     await docs.goto('/evalstone/library');
     await expect(page.getByText('Not yet released')).toBeVisible();
     await docs.goto('/evalstone/center');
@@ -56,6 +55,7 @@ test.describe('Learning center', () => {
 });
 
 const GUIDES_AND_REFERENCE: Array<[string, string]> = [
+  ['/evalstone/how-it-works', 'How it works'],
   ['/guides/quickstart', 'Quickstart'],
   ['/guides/ci', 'Evals in CI'],
   ['/guides/mcp', 'Evals from your coding agent'],
