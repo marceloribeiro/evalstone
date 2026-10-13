@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import Invalid, NotFound
 from app.models import Label, Project, User
+from app.services import events
 
 MAX_LABELS_PER_PUSH = 5000  # the schema's list cap reads this constant
 # column widths the library does not bound; checked once here (422, not a DataError 500)
@@ -87,6 +88,7 @@ def upsert(
     ).all()
     db.commit()
     by_key = {(r.sample_key, r.output_hash, r.check_key): r.id for r in rows}
+    events.publish(project.id, "labels.stored", count=len(values))
     return [by_key[(v["sample_key"], v["output_hash"], v["check_key"])] for v in values]
 
 

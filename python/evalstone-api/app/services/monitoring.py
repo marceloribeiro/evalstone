@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import Invalid, NotFound
 from app.models import Alert, CheckDefinition, Monitor, Project, Trace, TraceScore, User
+from app.services import events
 from app.services import judge_settings as judge_svc
 from app.services import providers as provider_svc
 from app.services.providers import validate_base_url
@@ -91,6 +92,8 @@ def ingest_traces(db: Session, project: Project, records: list[dict[str, Any]]) 
     )
     stored = len(db.execute(stmt.returning(Trace.id)).all())  # psycopg3 reports -1 for rowcount
     db.commit()
+    if stored:
+        events.publish(project.id, "traces.stored", count=stored)
     return stored
 
 
@@ -397,6 +400,15 @@ def score_monitor(db: Session, monitor_id: uuid.UUID) -> dict[str, Any]:
         db.commit()
     result["alert"] = evaluate_policy(db, m)
     db.commit()  # releases the monitor lock
+    if result["scored"]:
+        events.publish(
+            m.project_id,
+            "monitor.scored",
+            monitor_id=m.id,
+            scored=result["scored"],
+            errors=result["errors"],
+            cost_usd=result["cost_usd"],
+        )
     return result
 
 
@@ -471,10 +483,23 @@ def evaluate_policy(db: Session, m: Monitor) -> dict[str, Any] | None:
         db.commit()
         db.refresh(alert)
         notify(db, m, alert)
+        events.publish(
+            m.project_id,
+            "alert.opened",
+            alert_id=alert.id,
+            monitor_id=m.id,
+            metric=alert.metric,
+            value=alert.value,
+            threshold=alert.threshold,
+            n=alert.n,
+        )
         return {"alert_id": str(alert.id), "state": "opened", "value": value}
     if current is not None:
         current.resolved_at = datetime.now(UTC)
         db.commit()
+        events.publish(
+            m.project_id, "alert.resolved", alert_id=current.id, monitor_id=m.id, value=value
+        )
         return {"alert_id": str(current.id), "state": "resolved", "value": value}
     return None
 
