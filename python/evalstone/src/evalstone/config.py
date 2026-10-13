@@ -28,7 +28,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
-from evalstone.checks import deterministic, registry
+from evalstone.checks import comparison, deterministic, rag, registry, safety, trajectory
 from evalstone.checks.judge import judge as judge_factory
 from evalstone.dataset import Dataset
 from evalstone.gate import Gate
@@ -129,6 +129,10 @@ class Config(BaseModel):
             if factory is None:
                 known = ", ".join(sorted(FACTORIES))
                 raise ValueError(f"check {key!r}: unknown type {kind!r} (known: {known})")
+            baseline = spec.get("baseline")
+            if kind == "comparison.pairwise" and isinstance(baseline, dict) and "kind" in baseline:
+                spec["baseline"] = self.target(baseline)  # a target spec → a Target
+                # (a plain {sample_id: output} mapping is passed through as recorded outputs)
             try:
                 return factory(key=key, **spec)
             except TypeError as exc:
@@ -172,6 +176,14 @@ FACTORIES: dict[str, Callable[..., Any]] = {
     name: getattr(deterministic, name) for name in deterministic.__all__ if name != "python"
 }
 FACTORIES["judge"] = judge_factory  # judge(key, rubric, *, scale, model, …)
+# Dotted types for the other families: rag.faithfulness, safety.refusal,
+# trajectory.tool_called, comparison.pairwise, … — every factory accepts `key=`.
+for _mod in (rag, safety, trajectory, comparison):
+    for _name in _mod.__all__:
+        _fn = getattr(_mod, _name)
+        helper = _name.startswith(("is_", "parse_", "steps_"))
+        if callable(_fn) and not isinstance(_fn, type) and not helper:
+            FACTORIES[f"{_mod.__name__.rsplit('.', 1)[-1]}.{_name}"] = _fn
 
 
 def _load_module(dotted: str, root: Path) -> Any:
