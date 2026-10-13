@@ -29,9 +29,15 @@ def test_support_bot(run):        # optional: the body sees the Run
 
 The failure message carries the gate lines and the first failing results, so
 the test output already answers "which sample broke". Fixtures `evalstone_run`
-and `evalstone_gate` do the same without the decorator; `--evalstone-config`
-and `--evalstone-baseline` are pytest options. No `evalstone.yaml` → the test
-is skipped, not errored.
+and `evalstone_gate` do the same without the decorator, and the decorator works
+on test methods too. Each suite writes its own report beside the config
+(`evalstone-report.<suite>.json`), so several suites in one session never
+overwrite each other; `--evalstone-config` and `--evalstone-baseline` (a
+report, or a directory of per-suite reports, relative to the config's
+directory) are pytest options. A suite without a `gate:` fails the gated forms
+rather than passing by default. Patches you make in a test (`monkeypatch` on
+your bot module) reach the suite: the run reuses the modules already imported.
+No `evalstone.yaml` → the test is skipped, not errored.
 
 ## The GitHub Action
 
