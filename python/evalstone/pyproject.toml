@@ -30,7 +30,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+anthropic = ["anthropic>=1.13,<2"]
 dev = [
+  "anthropic>=1.13,<2",
   "pytest>=9.1",
   "respx>=0.23",
   "ruff>=0.17",

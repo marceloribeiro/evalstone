@@ -1,0 +1,204 @@
+import textwrap
+
+import pytest
+
+import evalstone as es
+from evalstone import Context, Dataset, MemoryCache, Output, PromptTarget, Providers, Sample, Suite
+from evalstone.checks.judge import judge, parse_verdict
+from evalstone.config import Config
+from evalstone.providers import ChatResponse, ProviderError
+
+S = Sample(id="s", input={"question": "Can I return a sale item?"}, expected={"must": ["30 days"]})
+
+
+class FakeProvider:
+    """Replies by looking at the ANSWER text; records every request it saw."""
+
+    name = "openai"
+
+    def __init__(self, reply=None, fail=None, judge_reply=None):
+        self.reply, self.fail, self.calls = reply, fail, []
+        self.judge_reply = judge_reply
+
+    def complete(self, request):
+        self.calls.append(request)
+        if self.fail:
+            raise ProviderError(self.fail)
+        is_judge = request.system is not None and "RUBRIC" in request.system
+        if is_judge and self.judge_reply is not None:
+            text = self.judge_reply
+        elif is_judge:
+            good = "30 days" in request.messages[0].content
+            text = (
+                '{"score": 5, "reason": "great"}' if good else '{"score": 2, "reason": "missing"}'
+            )
+        else:
+            text = self.reply or ""
+        return ChatResponse(
+            text=text,
+            model=request.model,
+            input_tokens=100,
+            output_tokens=10,
+            cost_usd=0.001,
+            latency_ms=12.0,
+        )
+
+
+def ctx_with(provider, default="openai/judge-model", cache=True):
+    reg = Providers(default_model=default)
+    reg.register("openai", provider)
+    return Context(providers=reg, cache=MemoryCache() if cache else None)
+
+
+# ── parse ────────────────────────────────────────────────────────────────────
+
+
+def test_parse_verdict_is_tolerant_but_strict_on_range():
+    assert parse_verdict('Sure! {"score": 4, "reason": "fine"} done', 5) == (4, "fine")
+    assert parse_verdict('{"score": "3"}', 5) == (3, "")
+    assert parse_verdict('{"score": 4.6, "reason": "x"}', 5) == (5, "x")
+    with pytest.raises(ValueError, match="no JSON"):
+        parse_verdict("I think it is good", 5)
+    with pytest.raises(ValueError, match=r"outside 1\.\.5"):
+        parse_verdict('{"score": 9}', 5)
+    with pytest.raises(ValueError, match="no numeric score"):
+        parse_verdict('{"grade": "A"}', 5)
+
+
+# ── the check ────────────────────────────────────────────────────────────────
+
+
+def test_judge_scores_passes_and_fails_with_prompt_contract():
+    prov = FakeProvider()
+    chk = judge("helpful", "Answer must state the return window.")
+    ctx = ctx_with(prov)
+    good = chk(S, Output(value="Within 30 days with a receipt."), ctx)
+    bad = chk(S, Output(value="Ask the store."), ctx)
+    assert good.passed and good.value == 1.0 and good.reason == "5/5: great"
+    assert not bad.passed and bad.value == 0.25 and bad.reason == "2/5: missing"
+    assert good.cost_usd == 0.001 and good.raw["model"] == "judge-model"
+    req = prov.calls[0]
+    assert req.model == "judge-model" and "Answer must state the return window." in req.system
+    assert '"score": <integer 1-5>' in req.system
+    assert "REFERENCE" not in req.messages[0].content  # reference excluded by default
+    assert "Can I return a sale item?" in req.messages[0].content
+
+
+def test_judge_threshold_scale_reference_and_version_hash():
+    prov = FakeProvider(judge_reply='{"score": 7, "reason": "ok"}')
+    chk = judge("graded", "rubric", scale=10, include_reference=True, model="openai/other")
+    score = chk(S, Output(value="x"), ctx_with(prov))
+    assert score.value == pytest.approx(6 / 9) and score.passed is False  # default threshold 8/10
+    sent = prov.calls[0].messages[0].content
+    assert "REFERENCE" in sent and "30 days" in sent
+    assert prov.calls[0].model == "other"
+    loose = judge("graded2", "rubric", scale=10, threshold=0.5)
+    seven = ctx_with(FakeProvider(judge_reply='{"score": 7}'))
+    assert loose(S, Output(value="x"), seven).passed is True
+    assert judge("a", "r").version_hash != judge("a", "r", scale=3).version_hash
+    # the key is not part of the judge version
+    assert judge("a", "r").version_hash == judge("b", "r").version_hash
+    with pytest.raises(ValueError):
+        judge("x", "r", scale=1)
+
+
+def test_judge_errors_are_never_passes():
+    chk = judge("h", "r")
+    none = chk(S, Output(value="x"), Context(providers=None))
+    assert none.error.startswith("judge: no providers")
+    down = chk(S, Output(value="x"), ctx_with(FakeProvider(fail="openai: HTTP 500: boom")))
+    assert down.passed is False and down.error == "openai: HTTP 500: boom"
+    garbage = chk(S, Output(value="x"), ctx_with(FakeProvider(judge_reply="looks fine to me")))
+    assert garbage.passed is False and "no JSON" in garbage.error and garbage.cost_usd == 0.001
+    no_model = chk(S, Output(value="x"), ctx_with(FakeProvider(), default=None))
+    assert no_model.error.startswith("no model given")
+
+
+def test_judge_cache_makes_the_second_identical_call_free():
+    prov = FakeProvider()
+    ctx = ctx_with(prov)
+    chk = judge("h", "r")
+    first = chk(S, Output(value="Within 30 days."), ctx)
+    second = chk(S, Output(value="Within 30 days."), ctx)
+    assert len(prov.calls) == 1 and len(ctx.cache) == 1
+    assert second.value == first.value and second.cost_usd == 0.0 and second.raw["cached"] is True
+    chk(S, Output(value="Different answer."), ctx)
+    assert len(prov.calls) == 2
+    other_rubric = judge("h2", "another rubric")
+    other_rubric(S, Output(value="Within 30 days."), ctx)
+    assert len(prov.calls) == 3  # a different judge version is a different cache key
+    no_cache = ctx_with(prov, cache=False)
+    chk(S, Output(value="Within 30 days."), no_cache)
+    chk(S, Output(value="Within 30 days."), no_cache)
+    assert len(prov.calls) == 5
+
+
+# ── suite integration: cheap first, judge costs summed, prompt target ────────
+
+
+def test_suite_runs_deterministic_checks_before_judges_and_sums_cost():
+    prov = FakeProvider()
+    ds = Dataset("d", [S])
+    suite = Suite("s", dataset=ds, checks=[judge("h", "r"), es.checks.contains(path="must")])
+    assert suite.check_keys == ["contains", "h"]
+    run = suite.run(lambda inp: "Within 30 days.", ctx=ctx_with(prov))
+    assert run.summary.pass_rate == 1.0 and run.summary.cost_usd == pytest.approx(0.001)
+    assert run.summary.per_check[1].key == "h" and run.summary.per_check[1].cost_usd == 0.001
+
+
+def test_prompt_target_formats_template_and_reports_cost():
+    prov = FakeProvider(reply="Within 30 days.")
+    reg = Providers(default_model="openai/gen")
+    reg.register("openai", prov)
+    t = PromptTarget("openai/gen", "Q: {question}\nA:", system="You are support.", providers=reg)
+    out = t.produce(S)
+    assert out.value == "Within 30 days." and out.cost_usd == 0.001 and out.model == "gen"
+    assert prov.calls[0].messages[0].content == "Q: Can I return a sale item?\nA:"
+    assert prov.calls[0].system == "You are support."
+    assert t.describe() == {"kind": "prompt", "model": "openai/gen", "system": True}
+    missing = PromptTarget("openai/gen", "{missing}", providers=reg).produce(S)
+    assert missing.error.startswith("prompt target: template placeholder")
+    assert PromptTarget("openai/gen").produce(S).error == "prompt target: no providers configured"
+    via_factory = es.target("prompt", model="openai/gen", providers=reg)
+    assert via_factory.produce(S).value == "Within 30 days."
+
+
+def test_config_wires_providers_judges_prompt_targets_and_prices(tmp_path, monkeypatch):
+    (tmp_path / "evals").mkdir()
+    (tmp_path / "evals" / "golden.jsonl").write_text(
+        '{"id": "a", "input": {"question": "q"}, "expected": {"must": ["30 days"]}}\n'
+    )
+    (tmp_path / "evalstone.yaml").write_text(
+        textwrap.dedent(
+            """
+            project: demo
+            datasets: { golden: evals/golden.jsonl }
+            providers:
+              openai: { base_url: http://localhost:11434/v1, api_key_env: MY_LLM_KEY }
+            judges: { default_model: openai/judge }
+            prices: { judge: [1.0, 2.0] }
+            checks:
+              helpful: { type: judge, rubric: "Be helpful.", scale: 3 }
+              must: { type: contains, path: must }
+            suites:
+              s:
+                dataset: golden
+                target: { kind: prompt, template: "Answer: {question}" }
+                checks: [helpful, must]
+            """
+        )
+    )
+    monkeypatch.setenv("MY_LLM_KEY", "k")
+    cfg = Config.load(tmp_path)
+    assert cfg.provider_registry().get("openai").base_url == "http://localhost:11434/v1"
+    assert cfg.provider_registry().get("openai").api_key == "k"
+    assert cfg.prices == {"judge": (1.0, 2.0)}
+    prov = FakeProvider(reply="Within 30 days.", judge_reply='{"score": 3, "reason": "ok"}')
+    cfg.provider_registry().register("openai", prov)
+    suite, target = cfg.suite("s")
+    assert target.describe()["kind"] == "prompt" and target.model == "openai/judge"
+    run = suite.run(target, ctx=cfg.context())
+    assert run.summary.pass_rate == 1.0 and run.summary.results == 2
+    cfg.checks["bad"] = {"type": "judge"}
+    with pytest.raises(ValueError, match=r"check 'bad' \(judge\): .*rubric"):
+        cfg.check("bad")
