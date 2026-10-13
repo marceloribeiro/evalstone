@@ -1,6 +1,7 @@
 """Every model module is imported here so Alembic autogenerate and the console see all tables."""
 
 from app.models.base import Base, TimestampedModel
+from app.models.check import CheckDefinition, CheckVersion
 from app.models.dataset import Dataset, DatasetVersion, DatasetVersionSample, Sample
 from app.models.label import JudgeCacheEntry, Label
 from app.models.model_call import ModelCall
@@ -13,6 +14,8 @@ from app.models.user import User
 __all__ = [
     "ADAPTERS",
     "Base",
+    "CheckDefinition",
+    "CheckVersion",
     "Dataset",
     "DatasetVersion",
     "DatasetVersionSample",
