@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app import __version__
 from app.config import get_settings
 from app.errors import DomainError
-from app.routers import auth, health, organizations, projects
+from app.routers import auth, health, organizations, projects, providers
 
 settings = get_settings()
 
@@ -33,6 +33,7 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(organizations.router)
 app.include_router(projects.router)
+app.include_router(providers.router)
 
 
 @app.exception_handler(DomainError)
