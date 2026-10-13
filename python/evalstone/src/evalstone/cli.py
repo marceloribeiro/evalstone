@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 import yaml
@@ -278,6 +279,105 @@ def init(
     created = ", ".join(str(p.relative_to(directory)) for p in files)
     console.print(f"created {created} in {directory.resolve()}")
     console.print("next: [bold]evalstone run nightly[/bold]")
+
+
+LabelOutOpt = typer.Option("labels.jsonl", "--out", "-o", help="Labels JSONL to append to")
+LabelCheckOpt = typer.Option(None, "--check", help="Record the grade for one rubric/check key")
+LabelScaleOpt = typer.Option(
+    "pass", "--scale", help="'pass' (p/f) or an integer N for a 1..N scale (pass at N-1)"
+)
+LabelerOpt = typer.Option("", "--labeler", help="Who is grading (defaults to $USER)")
+ReportArg = typer.Argument(..., help="A JSON report whose outputs you want to grade")
+LimitOpt = typer.Option(0, "--limit", help="Stop after this many new labels (0 = all)")
+
+
+@app.command()
+def label(
+    report: Path = ReportArg,
+    out: Path = LabelOutOpt,
+    check: str | None = LabelCheckOpt,
+    scale: str = LabelScaleOpt,
+    labeler: str = LabelerOpt,
+    limit: int = LimitOpt,
+) -> None:
+    """Grade a run's outputs by hand in the terminal; labels land in a JSONL file.
+
+    Each (sample, output) is shown once; already-labelled pairs are skipped, so you
+    can stop and resume. Grades: p / f (pass scale) or 1..N; `s` skips, `q` quits.
+    """
+    import os
+
+    from evalstone.checks.human import Label, LabelStore, output_hash
+
+    run = _load_run(report)
+    store = LabelStore(out)
+    who = labeler or os.environ.get("USER", "")
+    levels = None if scale == "pass" else int(scale)
+    if levels is not None and levels < 2:
+        err.print("[red]--scale must be 'pass' or an integer ≥ 2[/red]")
+        raise typer.Exit(2)
+    seen: set[tuple[str, str]] = set()
+    pending = []
+    for r in run.results:
+        k = (r.sample_id, output_hash(r.output))
+        if k in seen or store.get(r.sample_id, r.output, check) is not None:
+            continue
+        seen.add(k)
+        pending.append(r)
+    console.print(
+        f"[bold]{len(pending)}[/bold] output(s) to label from run {run.id} "
+        f"({len(store)} already in {out})"
+    )
+    added = 0
+    for i, r in enumerate(pending, start=1):
+        if limit and added >= limit:
+            break
+        console.rule(f"{i}/{len(pending)} · sample {r.sample_id}")
+        console.print("[bold]input[/bold]")
+        console.print(_pretty(r.input))
+        if r.expected is not None:
+            console.print("[bold]expected[/bold]")
+            console.print(_pretty(r.expected))
+        console.print("[bold]output[/bold]")
+        console.print(r.output.text)
+        prompt = "grade (p/f, s=skip, q=quit)" if levels is None else f"grade (1-{levels}, s, q)"
+        while True:
+            grade = typer.prompt(prompt).strip().lower()
+            if grade in {"s", "q"}:
+                break
+            if levels is None and grade in {"p", "f"}:
+                value, passed, raw = (1.0, True, "p") if grade == "p" else (0.0, False, "f")
+                break
+            if levels is not None and grade.isdecimal() and 1 <= int(grade) <= levels:
+                n = int(grade)
+                value, passed, raw = (n - 1) / (levels - 1), n >= levels - 1, n
+                break
+            console.print("[yellow]unrecognised grade[/yellow]")
+        if grade == "q":
+            break
+        if grade == "s":
+            continue
+        notes = typer.prompt("notes", default="", show_default=False).strip()
+        store.add(
+            Label(
+                sample_id=r.sample_id,
+                output_hash=output_hash(r.output),
+                value=value,
+                passed=passed,
+                notes=notes,
+                check=check,
+                labeler=who,
+                raw=raw,
+            )
+        )
+        added += 1
+    console.print(f"\n{added} label(s) added → {out} ({len(store)} total)")
+
+
+def _pretty(value: Any) -> str:
+    if value is None:
+        return "[dim](not recorded)[/dim]"
+    return value if isinstance(value, str) else json.dumps(value, indent=2, ensure_ascii=False)
 
 
 @app.command()
