@@ -10,11 +10,11 @@ default:
 
 # --- setup -------------------------------------------------------------------
 
-# create ./venv (PYTHON=python3.12 to override) and install the pinned requirements
+# create ./venv (PYTHON=python3.12 to override) and install runtime + dev requirements
 install:
     test -d venv || {{python}} -m venv venv
     {{venv}}/pip install -q --upgrade pip
-    {{venv}}/pip install -q -r requirements.txt
+    {{venv}}/pip install -q -r requirements-dev.txt
 
 # verify the native local services this project needs are up
 services-check:
@@ -30,10 +30,10 @@ db-create-all:
     #!/usr/bin/env bash
     set -euo pipefail
     for db in "${DB_NAME}" "${DB_TEST_NAME}"; do
-      if psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -Atc "select 1 from pg_database where datname='${db}'" | grep -q 1; then
+      if psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER:-$USER}" -d postgres -Atc "select 1 from pg_database where datname='${db}'" | grep -q 1; then
         echo "exists: ${db}"
       else
-        createdb -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" "${db}" && echo "created: ${db}"
+        createdb -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER:-$USER}" "${db}" && echo "created: ${db}"
       fi
     done
 
@@ -44,9 +44,9 @@ db-drop-all:
     for db in "${DB_NAME}" "${DB_TEST_NAME}"; do
       case "$db" in evalstone_api_*) ;; *) echo "refusing to drop non-evalstone db: $db"; exit 1;; esac
       if [ "${FORCE:-0}" = "1" ]; then
-        psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d postgres -c "DROP DATABASE IF EXISTS \"${db}\" WITH (FORCE)"
+        psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER:-$USER}" -d postgres -c "DROP DATABASE IF EXISTS \"${db}\" WITH (FORCE)"
       else
-        dropdb --if-exists -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" "${db}"
+        dropdb --if-exists -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER:-$USER}" "${db}"
       fi
       echo "dropped: ${db}"
     done
@@ -62,7 +62,7 @@ db-revision message:
 
 # psql shell on the development database
 db:
-    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER}" -d "${DB_NAME}"
+    psql -h "${DB_HOST}" -p "${DB_PORT}" -U "${DB_USER:-$USER}" -d "${DB_NAME}"
 
 # --- run ---------------------------------------------------------------------
 

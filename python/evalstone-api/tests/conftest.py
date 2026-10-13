@@ -4,14 +4,15 @@ os.environ["APP_ENV"] = "test"  # the engine picks DB_TEST_NAME; never the devel
 os.environ.setdefault("CELERY_TASK_ALWAYS_EAGER", "1")
 
 import pytest
-from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from alembic import command
 from app.config import get_settings
 from app.db import SessionLocal, engine
 from app.main import app
 from app.models import Base
-from fastapi.testclient import TestClient
-from sqlalchemy import text
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -1,4 +1,5 @@
 from app.config import get_settings
+from app.db import get_db
 from app.routers import health
 
 
@@ -27,13 +28,14 @@ def test_ready_is_503_when_the_database_is_down(client):
         def execute(self, *_):
             raise RuntimeError("connection refused")
 
+        def rollback(self):
+            pass
+
         def close(self):
             pass
 
     def broken_db():
         yield BrokenSession()
-
-    from app.db import get_db
 
     client.app.dependency_overrides[get_db] = broken_db
     try:
@@ -42,7 +44,45 @@ def test_ready_is_503_when_the_database_is_down(client):
         client.app.dependency_overrides.clear()
     assert r.status_code == 503
     assert r.json()["detail"]["database"] == "down"
-    assert health.router is not None
+
+
+def test_ready_bounds_every_probe_and_closes_the_redis_client(client, monkeypatch):
+    """A stalled dependency must turn into a 503, not a hung probe (review finding on #23)."""
+    seen: dict[str, object] = {}
+
+    class FakeRedis:
+        def ping(self):
+            return True
+
+        def close(self):
+            seen["closed"] = True
+
+    def from_url(url, **kwargs):
+        seen["kwargs"] = kwargs
+        return FakeRedis()
+
+    statements: list[str] = []
+
+    class RecordingSession:
+        def execute(self, stmt):
+            statements.append(str(stmt))
+
+        def rollback(self):
+            seen["rolled_back"] = True
+
+    monkeypatch.setattr(health.redis.Redis, "from_url", staticmethod(from_url))
+    client.app.dependency_overrides[get_db] = lambda: RecordingSession()
+    try:
+        assert client.get("/ready").status_code == 200
+    finally:
+        client.app.dependency_overrides.clear()
+    assert seen["kwargs"] == {
+        "socket_connect_timeout": health.PROBE_TIMEOUT_S,
+        "socket_timeout": health.PROBE_TIMEOUT_S,
+    }
+    assert seen["closed"] is True
+    assert statements[0] == f"SET LOCAL statement_timeout = {health.PROBE_TIMEOUT_MS}"
+    assert seen["rolled_back"] is True  # SET LOCAL never leaks past the probe
 
 
 def test_docs_require_basic_auth(client):
@@ -53,3 +93,10 @@ def test_docs_require_basic_auth(client):
     assert client.get("/docs", auth=(s.docs_username, s.docs_password)).status_code == 200
     spec = client.get("/openapi.json", auth=(s.docs_username, s.docs_password)).json()
     assert "/health" in spec["paths"] and "/ready" in spec["paths"]
+    assert spec["info"]["description"]  # app.openapi(), not a bare get_openapi() rebuild
+
+
+def test_docs_reject_non_ascii_credentials_with_401_not_500(client):
+    r = client.get("/docs", auth=("evalstoné", "chänge-me"))
+    assert r.status_code == 401
+    assert r.headers["WWW-Authenticate"] == "Basic"

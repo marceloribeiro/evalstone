@@ -1,10 +1,11 @@
 import os
 from logging.config import fileConfig
 
+from sqlalchemy import engine_from_config, pool
+
 from alembic import context
 from app.config import get_settings
 from app.models import Base
-from sqlalchemy import engine_from_config, pool
 
 config = context.config
 if config.config_file_name is not None:
@@ -13,7 +14,8 @@ if config.config_file_name is not None:
 settings = get_settings()
 # `just db-migrate-all` runs alembic once per database with ALEMBIC_DB_NAME overridden.
 db_name = os.environ.get("ALEMBIC_DB_NAME") or settings.db_name
-config.set_main_option("sqlalchemy.url", settings.database_url(db_name))
+# configparser interpolates "%" in ini values; the URL percent-encodes credentials, so escape it.
+config.set_main_option("sqlalchemy.url", settings.database_url(db_name).replace("%", "%%"))
 
 target_metadata = Base.metadata
 

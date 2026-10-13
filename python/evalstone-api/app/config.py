@@ -1,6 +1,11 @@
+import getpass
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
+
+INSECURE_DOCS_PASSWORDS = {"", "change-me"}
 
 
 class Settings(BaseSettings):
@@ -10,7 +15,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_port: int = 8181
 
-    db_user: str = "marcelo"
+    db_user: str = getpass.getuser()  # native Postgres: the OS user owns the cluster
     db_pass: str = ""
     db_host: str = "localhost"
     db_port: int = 5432
@@ -41,9 +46,24 @@ class Settings(BaseSettings):
         return self.db_test_name if self.is_test else self.db_name
 
     def database_url(self, name: str | None = None) -> str:
-        db = name or self.active_db_name
-        auth = self.db_user if not self.db_pass else f"{self.db_user}:{self.db_pass}"
-        return f"postgresql+psycopg://{auth}@{self.db_host}:{self.db_port}/{db}"
+        """A URL whose user/password are percent-encoded, so secrets with @ : / # % still parse."""
+        return URL.create(
+            "postgresql+psycopg",
+            username=self.db_user,
+            password=self.db_pass or None,
+            host=self.db_host,
+            port=self.db_port,
+            database=name or self.active_db_name,
+        ).render_as_string(hide_password=False)
+
+    @model_validator(mode="after")
+    def _docs_password_is_not_the_published_default(self) -> "Settings":
+        """Fail closed: outside development/test the published default must not guard /docs."""
+        local = self.app_env in {"development", "test"}
+        if not local and self.docs_password in INSECURE_DOCS_PASSWORDS:
+            what = "empty" if not self.docs_password else "the published default"
+            raise ValueError(f"DOCS_PASSWORD is {what}; set a real one in .env ({self.app_env})")
+        return self
 
 
 @lru_cache

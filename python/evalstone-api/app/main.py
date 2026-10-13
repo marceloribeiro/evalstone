@@ -3,7 +3,6 @@ import secrets
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
@@ -17,6 +16,7 @@ settings = get_settings()
 app = FastAPI(
     title="Evalstone API",
     version=__version__,
+    description="The Evalstone center: the sole owner of PostgreSQL (ADR-001).",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,  # served below, behind basic auth
@@ -41,8 +41,9 @@ _basic = HTTPBasic()
 
 
 def _docs_guard(credentials: HTTPBasicCredentials = Depends(_basic)) -> None:
-    ok_user = secrets.compare_digest(credentials.username, settings.docs_username)
-    ok_pass = secrets.compare_digest(credentials.password, settings.docs_password)
+    # compare on bytes: compare_digest raises TypeError on non-ASCII str (→ 500 instead of 401)
+    ok_user = secrets.compare_digest(credentials.username.encode(), settings.docs_username.encode())
+    ok_pass = secrets.compare_digest(credentials.password.encode(), settings.docs_password.encode())
     if not (ok_user and ok_pass):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -53,7 +54,7 @@ def _docs_guard(credentials: HTTPBasicCredentials = Depends(_basic)) -> None:
 
 @app.get("/openapi.json", include_in_schema=False, dependencies=[Depends(_docs_guard)])
 def openapi_json():
-    return get_openapi(title=app.title, version=app.version, routes=app.routes)
+    return app.openapi()  # FastAPI's own cached schema, with description/tags/servers intact
 
 
 @app.get("/docs", include_in_schema=False, dependencies=[Depends(_docs_guard)])

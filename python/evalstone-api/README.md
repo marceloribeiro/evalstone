@@ -10,7 +10,7 @@ PostgreSQL 16 and Redis run natively on your machine (no containers).
 
 ```bash
 cp .env.example .env         # DB_USER = your OS user; pick a free Redis index
-just install                 # python3.13 -m venv venv + pinned requirements
+just install                 # python3.13 -m venv venv + requirements-dev.txt (runtime + tooling)
 just services-check          # postgres + redis up?
 just db-create-all           # evalstone_api_development + evalstone_api_test
 just db-migrate-all          # alembic upgrade head on both
