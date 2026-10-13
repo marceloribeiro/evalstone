@@ -14,6 +14,9 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+import httpx
+
+from evalstone._json import dumps
 from evalstone.dataset import Sample
 from evalstone.output import Output
 
@@ -61,9 +64,13 @@ class CallableTarget:
 class HttpTarget:
     """POST (by default) the sample input to ``url`` and read the JSON response.
 
-    The request body is ``{"input": <sample.input>}`` unless ``body`` is given, in
-    which case ``{input}`` placeholders in its JSON text are filled. ``response_path``
-    digs into the JSON response for the output value.
+    The request body is ``{"input": <sample.input>}`` unless ``body`` is given: a
+    string leaf that is exactly ``"{input}"`` becomes the raw input (any JSON type);
+    ``{input}`` inside a longer string is replaced by the input as text. For GET the
+    input is sent as the ``input`` query parameter (JSON-encoded unless it is a
+    string). ``response_path`` digs into the JSON response (dotted; digits index
+    lists). One HTTP client is kept for the target's lifetime; call ``close()`` or
+    use it as a context manager.
     """
 
     kind = "http"
@@ -78,6 +85,7 @@ class HttpTarget:
         response_path: str | None = None,
         timeout: float = 60.0,
         client: Any = None,
+        name: str | None = None,
     ):
         self.url = url
         self.method = method.upper()
@@ -85,40 +93,54 @@ class HttpTarget:
         self.body = dict(body) if body else None
         self.response_path = response_path
         self.timeout = timeout
+        self.name = name or url
         self._client = client
+        self._owns_client = client is None
 
     def describe(self) -> dict[str, Any]:
-        return {"kind": self.kind, "url": self.url, "method": self.method}
+        return {"kind": self.kind, "url": self.url, "method": self.method, "name": self.name}
+
+    @property
+    def client(self) -> Any:
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.timeout)
+        return self._client
+
+    def close(self) -> None:
+        if self._owns_client and self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> HttpTarget:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     def _payload(self, sample: Sample) -> Any:
         if self.body is None:
             return {"input": sample.input}
-        text = json.dumps(self.body)
-        return json.loads(text.replace('"{input}"', json.dumps(sample.input)))
+        return _fill(self.body, sample.input)
+
+    @staticmethod
+    def _dig(data: Any, path: str) -> Any:
+        for part in path.split("."):
+            index_list = isinstance(data, list) and part.isdecimal()
+            data = data[int(part)] if index_list else data[part]
+        return data
 
     def produce(self, sample: Sample) -> Output:
-        import httpx
-
         def call() -> Any:
-            client = self._client or httpx.Client(timeout=self.timeout)
-            try:
-                if self.method == "GET":
-                    resp = client.get(
-                        self.url, params={"input": sample.input}, headers=self.headers
-                    )
-                else:
-                    resp = client.request(
-                        self.method, self.url, json=self._payload(sample), headers=self.headers
-                    )
-                resp.raise_for_status()
-                data = resp.json()
-            finally:
-                if self._client is None:
-                    client.close()
-            if self.response_path:
-                for part in self.response_path.split("."):
-                    data = data[part]
-            return data
+            if self.method == "GET":
+                value = sample.input if isinstance(sample.input, str) else dumps(sample.input)
+                resp = self.client.get(self.url, params={"input": value}, headers=self.headers)
+            else:
+                resp = self.client.request(
+                    self.method, self.url, json=self._payload(sample), headers=self.headers
+                )
+            resp.raise_for_status()
+            data = resp.json()
+            return self._dig(data, self.response_path) if self.response_path else data
 
         return _timed(call)
 
@@ -155,14 +177,36 @@ class RecordedTarget:
         return Output(value=value)
 
 
+def _fill(node: Any, value: Any) -> Any:
+    """Substitute ``{input}`` in a body template: an exact leaf becomes the raw value,
+    an embedded placeholder is replaced by the value as text."""
+    if isinstance(node, dict):
+        return {k: _fill(v, value) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_fill(v, value) for v in node]
+    if isinstance(node, str):
+        if node == "{input}":
+            return value
+        if "{input}" in node:
+            return node.replace("{input}", value if isinstance(value, str) else dumps(value))
+    return node
+
+
 def target(kind: str, **config: Any) -> Target:
     """Build a target from its ``kind`` and config (what ``evalstone.yaml`` holds)."""
-    if kind == "callable":
-        return CallableTarget(config["fn"], whole_sample=config.get("whole_sample", False))
-    if kind == "http":
-        return HttpTarget(**config)
-    if kind == "recorded":
-        return RecordedTarget(config["outputs"] if "outputs" in config else config["path"])
+    try:
+        if kind == "callable":
+            return CallableTarget(**config)
+        if kind == "http":
+            return HttpTarget(**config)
+        if kind == "recorded":
+            outputs = config.pop("outputs", None)
+            path = config.pop("path", None)
+            if outputs is None and path is None:
+                raise ValueError("recorded target needs `outputs` or `path`")
+            return RecordedTarget(outputs if outputs is not None else path, **config)
+    except TypeError as exc:
+        raise ValueError(f"{kind} target: {exc}") from None
     raise ValueError(f"unknown target kind {kind!r}")
 
 

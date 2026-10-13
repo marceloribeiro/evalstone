@@ -47,6 +47,7 @@ class Gate(BaseModel):
             if not ok:
                 failures.append(text)
 
+        rule(s.results > 0, f"{s.results} results scored (a run with nothing scored never passes)")
         rule(
             s.error_rate <= self.max_error_rate,
             f"error rate {s.error_rate:.1%} ≤ {self.max_error_rate:.1%}",

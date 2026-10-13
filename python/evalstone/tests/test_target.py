@@ -1,6 +1,7 @@
 import json
 
 import httpx
+import pytest
 import respx
 
 from evalstone import CallableTarget, HttpTarget, Output, RecordedTarget, Sample, Target, target
@@ -82,3 +83,52 @@ def test_target_factory():
         target("magic")
     except ValueError as exc:
         assert "unknown target kind" in str(exc)
+
+
+# ── review findings on PR 3 ──────────────────────────────────────────────────
+
+
+@respx.mock
+def test_http_body_placeholders_are_filled_on_string_leaves():
+    route = respx.post("http://api.test/chat").mock(
+        return_value=httpx.Response(200, json={"ok": 1})
+    )
+    body = {"messages": [{"role": "user", "content": "Answer briefly: {input}"}], "raw": "{input}"}
+    HttpTarget("http://api.test/chat", body=body).produce(Sample(id="x", input={"q": "hi"}))
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["messages"][0]["content"] == 'Answer briefly: {"q": "hi"}'
+    assert sent["raw"] == {"q": "hi"}
+    HttpTarget("http://api.test/chat", body=body).produce(Sample(id="y", input="plain {input}"))
+    assert json.loads(route.calls.last.request.content)["raw"] == "plain {input}"
+
+
+@respx.mock
+def test_http_response_path_indexes_lists_and_get_sends_json():
+    respx.post("http://api.test/v1").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "hi"}}]})
+    )
+    t = HttpTarget("http://api.test/v1", response_path="choices.0.message.content")
+    assert t.produce(S).value == "hi"
+    get = respx.get("http://api.test/q").mock(return_value=httpx.Response(200, json="ok"))
+    HttpTarget("http://api.test/q", method="GET").produce(Sample(id="g", input={"q": "hello"}))
+    assert get.calls.last.request.url.params["input"] == '{"q": "hello"}'
+
+
+@respx.mock
+def test_http_target_keeps_one_client_and_closes_it():
+    respx.post("http://api.test/x").mock(return_value=httpx.Response(200, json=1))
+    with HttpTarget("http://api.test/x", name="my-api") as t:
+        t.produce(S)
+        first = t.client
+        t.produce(S)
+        assert t.client is first and t.describe()["name"] == "my-api"
+    assert t._client is None
+
+
+def test_target_factory_forwards_config_and_validates():
+    assert target("recorded", outputs={}, name="v2").name == "v2"
+    assert target("callable", fn=len, name="n").name == "n"
+    with pytest.raises(ValueError, match="needs `outputs` or `path`"):
+        target("recorded")
+    with pytest.raises(ValueError, match="callable target"):
+        target("callable", nope=1)

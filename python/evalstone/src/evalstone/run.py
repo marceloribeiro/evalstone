@@ -116,14 +116,18 @@ class Run(BaseModel):
     def to_json(self, path: str | Path | None = None, *, indent: int = 2) -> str:
         text = self.model_dump_json(indent=indent)
         if path is not None:
-            Path(path).write_text(text + "\n", encoding="utf-8")
+            p = Path(path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(text + "\n", encoding="utf-8")
         return text
 
     @classmethod
     def from_json(cls, source: str | Path) -> Run:
-        p = Path(source)
-        text = p.read_text(encoding="utf-8") if p.exists() else str(source)
-        return cls.model_validate_json(text)
+        """Load from a file path, or from JSON text when ``source`` is a string that
+        starts with ``{`` (the filesystem is never probed with document text)."""
+        if isinstance(source, str) and source.lstrip().startswith("{"):
+            return cls.model_validate_json(source)
+        return cls.model_validate_json(Path(source).read_text(encoding="utf-8"))
 
     # ── views ────────────────────────────────────────────────────────────
 

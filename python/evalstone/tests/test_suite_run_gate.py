@@ -98,6 +98,7 @@ def test_gate_regression_against_a_baseline():
     assert worse.gate_passed is False
     assert any("pass rate dropped 16.7%" in line for line in worse.gate_lines)
     assert suite.run(RecordedTarget(GOOD)).gate_lines == [
+        "PASS 6 results scored (a run with nothing scored never passes)",
         "PASS error rate 0.0% ≤ 0.0%",
         "SKIP regression: no baseline run",
     ]
@@ -125,3 +126,54 @@ def test_output_cost_is_counted_once_per_sample():
         lambda q: Output(value="Within 30 days with the receipt, free.", cost_usd=0.1)
     )
     assert run.summary.cost_usd == pytest.approx(0.3)
+
+
+# ── review findings on PR 3 ──────────────────────────────────────────────────
+
+
+def test_a_raising_target_or_check_never_takes_the_run_down():
+    class BadTarget:
+        def describe(self):
+            return {"kind": "bad"}
+
+        def produce(self, sample):
+            raise RuntimeError("target exploded")
+
+    class BadCheck:
+        key, kind = "bad", "deterministic"
+
+        def evaluate(self, sample, output, ctx):
+            raise ValueError("check exploded")
+
+    run = Suite("s", dataset=DS, checks=[BadCheck()]).run(BadTarget())
+    assert run.summary.errors == 3
+    assert all(r.score.error == "target: RuntimeError: target exploded" for r in run.results)
+    run = Suite("s", dataset=DS, checks=[BadCheck()]).run(RecordedTarget(GOOD))
+    assert all(r.score.error == "ValueError: check exploded" for r in run.results)
+
+
+def test_run_id_is_minted_up_front_and_visible_to_checks():
+    seen = []
+
+    @check("spy")
+    def spy(sample, output, ctx):
+        seen.append(ctx.run_id)
+        return True
+
+    run = Suite("s", dataset=DS, checks=["spy"]).run(RecordedTarget(GOOD))
+    assert seen and all(rid == run.id for rid in seen)
+
+
+def test_empty_run_never_passes_the_gate():
+    empty = Dataset("none", [])
+    suite = Suite("s", dataset=empty, checks=[es.checks.length()], gate=Gate())
+    run = suite.run(RecordedTarget({}))
+    assert run.gate_passed is False and any("0 results scored" in line for line in run.gate_lines)
+
+
+def test_from_json_accepts_text_and_to_json_creates_parents(tmp_path):
+    run = make_suite().run(RecordedTarget(GOOD))
+    assert Run.from_json(run.to_json()).id == run.id
+    target_path = tmp_path / "reports" / "nested" / "r.json"
+    run.to_json(target_path)
+    assert target_path.exists() and Run.from_json(target_path).id == run.id

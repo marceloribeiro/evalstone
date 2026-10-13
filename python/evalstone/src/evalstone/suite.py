@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -10,6 +11,7 @@ from evalstone._git import head_sha
 from evalstone.checks import registry
 from evalstone.dataset import Dataset
 from evalstone.gate import Gate, GateFailed, GateReport
+from evalstone.output import Output
 from evalstone.run import Result, Run, summarise
 from evalstone.score import Check, CheckKind, Context, Score
 from evalstone.target import CallableTarget, Target
@@ -60,14 +62,23 @@ class Suite:
         clock = time.perf_counter()
         results: list[Result] = []
         total = len(self.dataset)
-        run_ctx = ctx or Context()
+        run_id = uuid.uuid4().hex[:12]
+        run_ctx = (ctx or Context()).model_copy(update={"run_id": run_id})
         for i, sample in enumerate(self.dataset, start=1):
-            output = tgt.produce(sample)
+            # One sample never takes the run down: the invariant is enforced here, not
+            # left to every Target / Check implementation.
+            try:
+                output = tgt.produce(sample)
+            except Exception as exc:
+                output = Output.failed(f"{type(exc).__name__}: {exc}")
             for chk in self.checks:
                 if output.error is not None:
                     score = Score.errored(f"target: {output.error}")
                 else:
-                    score = chk.evaluate(sample, output, run_ctx)
+                    try:
+                        score = chk.evaluate(sample, output, run_ctx)
+                    except Exception as exc:
+                        score = Score.errored(f"{type(exc).__name__}: {exc}")
                 results.append(
                     Result(
                         sample_id=sample.id,
@@ -81,6 +92,7 @@ class Suite:
                 on_sample(i, total)
         duration = (time.perf_counter() - clock) * 1000
         run = Run(
+            id=run_id,
             suite=self.name,
             dataset=self.dataset.name,
             dataset_hash=self.dataset.content_hash,
