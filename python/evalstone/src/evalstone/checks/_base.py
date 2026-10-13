@@ -124,7 +124,15 @@ def check(
     def decorator(fn: CheckFn) -> FunctionCheck:
         chk = FunctionCheck(key, fn, kind=CheckKind(kind), version=version)
         if register:
-            registry.register(chk)
+            # Re-importing or reloading the module that defined a check redefines the
+            # same function; that replaces. A *different* function under the same key
+            # is still a duplicate error.
+            previous = registry._checks.get(key)
+            same_fn = previous is not None and (
+                getattr(previous, "__module__", None),
+                getattr(previous, "__qualname__", None),
+            ) == (fn.__module__, fn.__qualname__)
+            registry.register(chk, replace=same_fn)
         return chk
 
     return decorator

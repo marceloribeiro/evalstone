@@ -1,0 +1,10 @@
+{"id": "return-window", "input": "How many days do I have to return something?", "expected": {"must_include": ["30 days"]}, "tags": ["returns"]}
+{"id": "sale-return", "input": "Can I return a sale item?", "expected": {"must_include": ["30 days", "store credit"]}, "tags": ["returns", "edge"]}
+{"id": "refund-time", "input": "When will my refund arrive?", "expected": {"must_include": ["5 business days"]}, "tags": ["returns"]}
+{"id": "shipping-time", "input": "How long does standard shipping take?", "expected": {"must_include": ["3-5"]}, "tags": ["shipping"]}
+{"id": "free-shipping", "input": "Is shipping free?", "expected": {"must_include": ["$50"]}, "tags": ["shipping"]}
+{"id": "express", "input": "How much is express shipping?", "expected": {"must_include": ["$15"]}, "tags": ["shipping"]}
+{"id": "ship-to-uk", "input": "Do you ship to the UK?", "expected": {"must_include": ["United States and Canada"]}, "tags": ["shipping", "edge"]}
+{"id": "warranty", "input": "How long is the warranty on electronics?", "expected": {"must_include": ["12-month"]}, "tags": ["warranty"]}
+{"id": "warranty-claim", "input": "What do I need for a warranty claim?", "expected": {"must_include": ["order number", "photo"]}, "tags": ["warranty"]}
+{"id": "delete-account", "input": "How do I delete my account?", "expected": {"must_include": ["Settings"]}, "tags": ["account"]}

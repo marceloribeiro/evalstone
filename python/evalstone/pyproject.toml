@@ -24,6 +24,9 @@ dependencies = [
   "httpx>=0.28,<1",
   "jsonschema>=4.26,<5",
   "pydantic>=2.14,<3",
+  "pyyaml>=6.0,<7",
+  "rich>=15.0,<16",
+  "typer>=0.27,<1",
 ]
 
 [project.optional-dependencies]
@@ -32,6 +35,9 @@ dev = [
   "respx>=0.23",
   "ruff>=0.17",
 ]
+
+[project.scripts]
+evalstone = "evalstone.cli:main"
 
 [project.urls]
 Homepage = "https://evalstone.com"
