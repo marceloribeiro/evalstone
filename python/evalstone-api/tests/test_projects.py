@@ -119,7 +119,7 @@ def test_service_stores_only_the_hash(db, project):
     u = user_service.get_user_by_email(db, "owner@acme.example.com")
     key, secret = project_service.create_ingest_key(db, project=p, created_by=u, name="x")
     assert secret not in (key.key_hash, key.prefix) and len(key.key_hash) == 64
-    assert project_service.resolve_ingest_key(db, secret).id == p.id
+    assert project_service.resolve_ingest_key(db, secret)[0].id == p.id
     assert project_service.resolve_ingest_key(db, "es_other") is None
 
 

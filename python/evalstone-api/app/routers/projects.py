@@ -13,7 +13,7 @@ from app.deps import (
     require,
     require_project,
 )
-from app.models import Project, Role
+from app.models import Organization, Project, Role
 from app.schemas.projects import (
     IngestKeyCreated,
     IngestKeyIn,
@@ -103,6 +103,6 @@ def revoke_ingest_key(
 
 
 @router.get("/ingest/whoami", response_model=ProjectOut, tags=["ingest"])
-def ingest_whoami(project: Project = Depends(get_ingest_project)):
+def ingest_whoami(resolved: tuple[Project, Organization] = Depends(get_ingest_project)):
     """What an SDK / CI caller resolves to with its `es_…` key (later slices push runs here)."""
-    return project
+    return resolved[0]
