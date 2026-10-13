@@ -3,60 +3,63 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PickOne } from "@/components/common/PickOne";
+import { LoadError } from "@/components/common/LoadError";
 import { useLoader } from "@/hooks/useLoader";
 import { api } from "@/lib/api";
 import { pct, signed, usd, when } from "@/lib/format";
 import type { Comparison, Flip, Page, Run } from "@/lib/types";
 
 /**
- * This run relative to another run of the same suite (the library's `compare()`): the suite
- * baseline by default, any earlier run otherwise. Regressions = passed before, fails now.
+ * This run relative to another run of the same suite (the library's `compare()`). Default:
+ * the suite's baseline; without one, the run that started just before this one (so "regressions"
+ * read forward in time); for the oldest run, the one just after it.
  */
 export function CompareView({ projectId, run, base }: { projectId: string; run: Run; base: string }) {
+  // the baseline is fetched by its own flag so it is never lost behind the newest-100 window
   const candidates = useLoader(
-    () => api<Page<Run>>(`/projects/${projectId}/runs`, { query: { suite: run.suite, limit: 100 } }).then((p) => p.items.filter((r) => r.id !== run.id)),
-    [projectId, run.suite, run.id],
+    () =>
+      Promise.all([
+        api<Page<Run>>(`/projects/${projectId}/runs`, { query: { suite: run.suite, limit: 100 } }),
+        api<Page<Run>>(`/projects/${projectId}/runs`, { query: { suite: run.suite, baseline: true, limit: 1 } }),
+      ]).then(([recent, baseline]) => {
+        const seen = new Set<string>();
+        return [...baseline.items, ...recent.items].filter((r) => r.id !== run.id && !seen.has(r.id) && seen.add(r.id));
+      }),
+    [projectId, run.suite, run.id, run.is_baseline], // is_baseline: a toggle on this run moves the suite's baseline
   );
   const [picked, setPicked] = useState<string | null>(null);
   const others = candidates.data ?? [];
-  const baseline = others.find((r) => r.is_baseline);
-  const against = picked ? others.find((r) => r.id === picked) : baseline ?? others[0];
+  const against = picked ? others.find((r) => r.id === picked) : defaultTarget(run, others);
   const cmp = useLoader(
     () => (against ? api<Comparison>(`/projects/${projectId}/runs/${against.id}/compare/${run.id}`) : Promise.resolve(null)),
     [projectId, run.id, against?.id],
   );
 
+  if (candidates.error) return <LoadError what="the runs to compare with" error={candidates.error} retry={candidates.reload} />;
   if (candidates.loading && !candidates.data) return <Skeleton className="mt-4 h-24 w-full" />;
   if (others.length === 0) return <p className="mt-4 text-sm text-muted-foreground">No other run of suite &quot;{run.suite}&quot; to compare with yet.</p>;
-  const items: Record<string, string> = Object.fromEntries(others.map((r) => [r.id, `${r.client_run_id}${r.is_baseline ? " (baseline)" : ""} · ${pct(r.pass_rate)} · ${when(r.finished_at)}`]));
+  const items: Record<string, string> = Object.fromEntries(
+    others.map((r) => [r.id, `${r.client_run_id}${r.is_baseline ? " (baseline)" : ""} · ${pct(r.pass_rate)} · ${when(r.finished_at)}`]),
+  );
 
   return (
     <div className="mt-4 space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm">Against</span>
-        <Select value={against?.id ?? null} onValueChange={(v) => setPicked(v)} items={items}>
-          <SelectTrigger aria-label="Compare against" className="w-[28rem] max-w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {others.map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {items[r.id]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <PickOne label="Compare against" value={against?.id ?? null} items={items} onChange={setPicked} className="w-[28rem] max-w-full" />
         {against && (
           <Link href={`${base}/runs/${against.id}`} className="text-sm underline-offset-4 hover:underline">
             open
           </Link>
         )}
       </div>
-      {cmp.loading && !cmp.data ? (
-        <Skeleton className="h-24 w-full" />
+      {cmp.error ? (
+        <LoadError what="the comparison" error={cmp.error} retry={cmp.reload} />
+      ) : cmp.loading ? (
+        <Skeleton className="h-24 w-full" data-testid="comparison-loading" />
       ) : cmp.data ? (
         <div data-testid="comparison">
           {!cmp.data.same_dataset && (
@@ -80,6 +83,16 @@ export function CompareView({ projectId, run, base }: { projectId: string; run: 
       ) : null}
     </div>
   );
+}
+
+/** Baseline → the latest run started before this one → the earliest run after it. */
+export function defaultTarget(run: Run, others: Run[]): Run | undefined {
+  const baseline = others.find((r) => r.is_baseline);
+  if (baseline) return baseline;
+  const before = others.filter((r) => r.started_at < run.started_at).sort((a, b) => (a.started_at < b.started_at ? 1 : -1));
+  if (before[0]) return before[0];
+  const after = others.filter((r) => r.started_at > run.started_at).sort((a, b) => (a.started_at < b.started_at ? -1 : 1));
+  return after[0] ?? others[0];
 }
 
 function Delta({ label, value, good }: { label: string; value: string; good: boolean }) {

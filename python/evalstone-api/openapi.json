@@ -3473,6 +3473,44 @@
         "title": "SkipIn",
         "type": "object"
       },
+      "SuiteOut": {
+        "description": "One suite of the project: how many runs it has and which one is its baseline.",
+        "properties": {
+          "baseline_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Run Id"
+          },
+          "last_started_at": {
+            "format": "date-time",
+            "title": "Last Started At",
+            "type": "string"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "suite": {
+            "title": "Suite",
+            "type": "string"
+          }
+        },
+        "required": [
+          "suite",
+          "runs",
+          "last_started_at",
+          "baseline_run_id"
+        ],
+        "title": "SuiteOut",
+        "type": "object"
+      },
       "TaskOut": {
         "properties": {
           "assignee_user_id": {
@@ -9082,6 +9120,59 @@
           }
         ],
         "summary": "Push Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/projects/{project_id}/runs/suites": {
+      "get": {
+        "description": "The project's suites (distinct, with counts and baselines) \u2014 the filter the web offers.",
+        "operationId": "list_suites_projects__project_id__runs_suites_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SuiteOut"
+                  },
+                  "title": "Response List Suites Projects  Project Id  Runs Suites Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Suites",
         "tags": [
           "runs"
         ]

@@ -15,6 +15,7 @@ import { api, errorMessage } from "@/lib/api";
 import type { IngestKey, IngestKeyCreated, Page, Run } from "@/lib/types";
 import { useLoader } from "@/hooks/useLoader";
 import { useLiveEvent } from "@/contexts/WebSocketContext";
+import { pct, when } from "@/lib/format";
 
 /** The project home: how to attach, the live feed, the latest runs — the hero of the scaffold. */
 export function ProjectOverview() {
@@ -92,7 +93,7 @@ export function ProjectOverview() {
               <ul className="text-sm text-muted-foreground" aria-label="Ingest keys">
                 {keys.data.map((k) => (
                   <li key={k.id}>
-                    {k.name} · {k.prefix}… {k.revoked_at ? "(revoked)" : k.last_used_at ? `· last used ${new Date(k.last_used_at).toLocaleString()}` : "· never used"}
+                    {k.name} · {k.prefix}… {k.revoked_at ? "(revoked)" : k.last_used_at ? `· last used ${when(k.last_used_at)}` : "· never used"}
                   </li>
                 ))}
               </ul>
@@ -145,9 +146,9 @@ export function ProjectOverview() {
                           {r.client_run_id}
                         </Link>
                       </td>
-                      <td>{(r.pass_rate * 100).toFixed(1)}%</td>
+                      <td>{pct(r.pass_rate)}</td>
                       <td>{r.result_count}</td>
-                      <td>{new Date(r.finished_at).toLocaleString()}</td>
+                      <td>{when(r.finished_at)}</td>
                     </tr>
                   ))}
                 </tbody>

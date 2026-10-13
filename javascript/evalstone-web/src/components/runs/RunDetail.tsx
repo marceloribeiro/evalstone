@@ -16,6 +16,7 @@ import { ms, pct, usd, when } from "@/lib/format";
 import type { Run } from "@/lib/types";
 import { ResultsTable } from "@/components/runs/ResultsTable";
 import { CompareView } from "@/components/runs/CompareView";
+import { LoadError } from "@/components/common/LoadError";
 
 /** One run: the summary the library computed, the gate, per-check rates, every result, and a diff. */
 export function RunDetail({ runId }: { runId: string }) {
@@ -31,7 +32,15 @@ export function RunDetail({ runId }: { runId: string }) {
     { label: "Runs", href: `${base}/runs` },
     { label: run.data?.client_run_id ?? "…" },
   ];
-  if (!run.data) return run.loading ? <Skeleton className="h-40 w-full" data-testid="loading" /> : <PageHeader title="Run not found" crumbs={crumbs} />;
+  if (!run.data) {
+    if (run.loading) return <Skeleton className="h-40 w-full" data-testid="loading" />;
+    return (
+      <div>
+        <PageHeader title="Run" crumbs={crumbs} />
+        <LoadError what="this run" error={run.error} retry={run.reload} />
+      </div>
+    );
+  }
   const r = run.data;
   const s = r.summary;
 

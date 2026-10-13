@@ -1,5 +1,6 @@
 import copy
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -108,6 +109,28 @@ def test_baseline_is_one_per_suite_and_links_on_push(client, project):
         f"/projects/{project['id']}/runs/{c}/baseline", json={"is_baseline": False}, headers=h
     )
     assert off.json()["is_baseline"] is False
+
+
+def test_suites_are_listed_with_counts_and_baselines(client, project):
+    """The web's suite filter: distinct suites, not a scan of the newest N runs."""
+    h = project["headers"]
+    url = f"/projects/{project['id']}/runs/suites"
+    assert client.get(url, headers=h).json() == []
+    a = _push(client, project, REPORT).json()["id"]
+    _push(client, project, _variant(REPORT, run_id="cccccccccccc"))
+    nightly = _variant(REPORT, run_id="dddddddddddd")
+    nightly["suite"] = "nightly"
+    _push(client, project, nightly)
+    client.put(f"/projects/{project['id']}/runs/{a}/baseline", json={}, headers=h)
+    suites = client.get(url, headers=h).json()
+    assert [(x["suite"], x["runs"], x["baseline_run_id"]) for x in suites] == [
+        ("ci", 2, a),
+        ("nightly", 1, None),
+    ]
+    last = datetime.fromisoformat(suites[0]["last_started_at"])
+    assert last == datetime.fromisoformat(REPORT["started_at"])
+    # the literal segment wins over the {run_id} route (it is declared first)
+    assert client.get(f"/projects/{project['id']}/runs/not-a-uuid", headers=h).status_code == 422
 
 
 def test_run_links_a_dataset_version_by_content_hash(client, project):

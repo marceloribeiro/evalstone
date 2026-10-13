@@ -83,6 +83,8 @@ export type Run = {
   created_by_user_id: string | null;
   created_at: string;
 };
+/** `GET /projects/{id}/runs/suites` — distinct suites with counts and baselines. */
+export type Suite = { suite: string; runs: number; last_started_at: string; baseline_run_id: string | null };
 /** `ResultOut` — one (sample, check) row of a run. */
 export type RunResult = {
   id: string;

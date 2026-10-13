@@ -37,6 +37,15 @@ class RunOut(BaseModel):
     created_at: datetime
 
 
+class SuiteOut(BaseModel):
+    """One suite of the project: how many runs it has and which one is its baseline."""
+
+    suite: str
+    runs: int
+    last_started_at: datetime
+    baseline_run_id: uuid.UUID | None
+
+
 class RunPage(BaseModel):
     items: list[RunOut]
     total: int

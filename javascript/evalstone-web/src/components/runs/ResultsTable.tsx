@@ -3,7 +3,9 @@
 import { Fragment, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Pager } from "@/components/common/Pager";
+import { PickOne } from "@/components/common/PickOne";
+import { LoadError } from "@/components/common/LoadError";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useLoader } from "@/hooks/useLoader";
@@ -33,25 +35,16 @@ export function ResultsTable({ projectId, run }: { projectId: string; run: Run }
   return (
     <div className="mt-4">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Select
+        <PickOne
+          label="Check"
           value={check}
-          onValueChange={(v) => {
+          items={items}
+          className="w-56"
+          onChange={(v) => {
             setCheck(v ?? ALL);
             setOffset(0);
           }}
-          items={items}
-        >
-          <SelectTrigger aria-label="Check" className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(items).map(([v, label]) => (
-              <SelectItem key={v} value={v}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        />
         <Button
           variant={failedOnly ? "default" : "outline"}
           size="sm"
@@ -67,10 +60,12 @@ export function ResultsTable({ projectId, run }: { projectId: string; run: Run }
           {total} result{total === 1 ? "" : "s"}
         </span>
       </div>
-      {results.loading && !results.data ? (
+      {results.error ? (
+        <LoadError what="the results" error={results.error} retry={results.reload} />
+      ) : results.loading && !results.data ? (
         <Skeleton className="h-40 w-full" />
       ) : (
-        <Table aria-label="Results">
+        <Table aria-label="Results" className={results.loading ? "opacity-60" : undefined} aria-busy={results.loading}>
           <TableHeader>
             <TableRow>
               <TableHead>Sample</TableHead>
@@ -120,21 +115,7 @@ export function ResultsTable({ projectId, run }: { projectId: string; run: Run }
           </TableBody>
         </Table>
       )}
-      {total > LIMIT && (
-        <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            {offset + 1}–{Math.min(offset + LIMIT, total)} of {total}
-          </span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - LIMIT))}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled={offset + LIMIT >= total} onClick={() => setOffset(offset + LIMIT)}>
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pager offset={offset} limit={LIMIT} total={total} onChange={setOffset} />
     </div>
   );
 }

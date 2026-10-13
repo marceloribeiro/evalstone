@@ -87,6 +87,29 @@ def list_runs(
     return rows, total
 
 
+def list_suites(db: Session, project: Project) -> list[dict[str, Any]]:
+    """Distinct suites with run count, last start and baseline (one query + one for baselines)."""
+    live = (Run.project_id == project.id, Run.deleted_at.is_(None))
+    rows = db.execute(
+        select(Run.suite, func.count(), func.max(Run.started_at))
+        .where(*live)
+        .group_by(Run.suite)
+        .order_by(Run.suite)
+    ).all()
+    baselines = dict(
+        db.execute(select(Run.suite, Run.id).where(*live, Run.is_baseline.is_(True))).all()
+    )
+    return [
+        {
+            "suite": suite,
+            "runs": n,
+            "last_started_at": last,
+            "baseline_run_id": baselines.get(suite),
+        }
+        for suite, n, last in rows
+    ]
+
+
 def _validate(report: dict[str, Any]) -> LibRun:
     try:
         run = LibRun.model_validate(report)
