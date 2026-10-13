@@ -1,5 +1,4 @@
-import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowLink } from '@/components/common/arrow-link';
 import { Section } from '@/components/common/section';
 import { CodePanel } from '@/components/ui/code-panel';
 
@@ -11,7 +10,8 @@ const YAML = `checks:
       invents nothing that is not in the policy.
     scale: 5                                    # pass at 4
 judges:
-  default_model: anthropic/claude-haiku-5-5     # provider/model
+  default_model: anthropic/claude-haiku-5-5     # provider/model; switch here, or per check
+  # default_model: openai/anthropic/claude-haiku-5-5   # the same model through OpenRouter
 providers:                                      # keys come from the environment
   anthropic: { api_key_env: ANTHROPIC_API_KEY }
   openai:    { base_url: https://openrouter.ai/api/v1, api_key_env: OPENROUTER_API_KEY }
@@ -21,7 +21,7 @@ const JUDGE = [
   'A rubric on a small scale, graded by the model you name; the verdict is a level and a reason, as JSON',
   'rag.faithfulness, rag.context_relevance, rag.answer_relevance: judges with fixed rubrics',
   'comparison.pairwise: which of two outputs is better, both orders, so position bias cancels',
-  'Calibrated against human labels: a judge you have not measured is an opinion',
+  'Measured against human labels: a judge you have not checked is an opinion (the agreement report is center work)',
   'No key, a refusal, malformed JSON: an error, never a pass, and the gate fails on error rate',
 ];
 
@@ -33,7 +33,7 @@ const HUMAN = [
 const CONTRACTS = [
   'JSON schema, must-include facts, regex, length, numeric tolerance',
   'Safety rules (refusal, PII, forbidden phrases) and agent-trajectory checks',
-  'Exact and free, so they run first: a broken contract never reaches a paid judge call',
+  'Exact and free; deterministic and trajectory checks run before the judges in every suite',
 ];
 
 function BulletCard({
@@ -74,9 +74,9 @@ export function ModelOrNot() {
       lead={
         <>
           Three layers, and the judge is where quality gets measured: a rubric, a small scale, a model
-          you name, calibrated against labels people wrote. Around it, deterministic checks catch the
-          contract failures for free, before any model is called. The judge calls your provider
-          directly, with your key; there is no Evalstone account, proxy or relay in the path.
+          you name, checked against labels people wrote. Around it, deterministic checks catch the
+          contract failures exactly and for free. The judge calls your provider directly, with your
+          key; there is no Evalstone account, proxy or relay in the path.
         </>
       }
     >
@@ -110,20 +110,8 @@ export function ModelOrNot() {
             failed call is an <strong>error, never a pass</strong>.
           </p>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <Link
-              href="/docs/evalstone/how-it-works"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-accent-strong hover:underline dark:text-accent"
-            >
-              How Evalstone works, in full
-              <ArrowRight className="size-4" aria-hidden />
-            </Link>
-            <Link
-              href="/docs/learn/llm-as-judge"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-accent-strong hover:underline dark:text-accent"
-            >
-              Why judges need calibrating (Evals 101, ch. 6)
-              <ArrowRight className="size-4" aria-hidden />
-            </Link>
+            <ArrowLink href="/docs/evalstone/how-it-works">How Evalstone works, in full</ArrowLink>
+            <ArrowLink href="/docs/learn/llm-as-judge">Why judges need calibrating (Evals 101, ch. 6)</ArrowLink>
           </div>
         </div>
       </div>
