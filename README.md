@@ -10,7 +10,7 @@
 
 > **Status:** the site and the learning center are live, and `evalstone` is on
 > PyPI (library, CLI, MCP server, pytest plugin, labeling) with the GitHub
-> Action alongside (`action@action-v0.1.0`). The center follows. See the
+> Action alongside (`marceloribeiro/evalstone/action@action-v0`). The center follows. See the
 > [roadmap](docs/ROADMAP.md).
 
 ## What it is

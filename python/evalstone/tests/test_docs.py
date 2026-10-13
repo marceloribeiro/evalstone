@@ -31,3 +31,23 @@ def test_cli_reference_names_every_command():
     commands = {c.name or c.callback.__name__ for c in app.registered_commands}
     missing = sorted(c for c in commands if f"`{c}" not in page)
     assert missing == [], f"commands without a reference row: {missing}"
+
+
+def test_every_action_snippet_uses_the_same_ref():
+    """The action is referenced from the site, the READMEs and the roadmap; they
+    drift unless they are the same string (the #16/#17 reviews caught two)."""
+    root = SITE_DOCS.parents[2].parent  # the repository root
+    sources = [
+        *SITE_DOCS.rglob("*.mdx"),
+        root / "README.md",
+        root / "action" / "README.md",
+        root / "docs" / "ROADMAP.md",
+    ]
+    refs = set()
+    for path in sources:
+        refs.update(
+            re.findall(
+                r"marceloribeiro/evalstone/action@([\w.-]+)", path.read_text(encoding="utf-8")
+            )
+        )
+    assert refs == {"action-v0"}, f"action refs in the docs: {sorted(refs)}"
