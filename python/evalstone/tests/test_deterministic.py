@@ -130,12 +130,75 @@ def test_length_limits():
 
 def test_python_wraps_any_function_without_registering():
     chk = python(lambda s, o: o.text.endswith("?"), "asks_back")
+    with pytest.raises(ValueError, match="explicit key"):
+        python(lambda s, o: True)
+    import functools
+
+    with pytest.raises(ValueError, match="explicit key"):
+        python(functools.partial(lambda s, o, t: True, t=1))
+    assert python(functools.partial(lambda s, o, t: True, t=1), "p").key == "p"
     assert chk.key == "asks_back"
     assert chk(S, Output(value="Anything else?")).passed
     assert "asks_back" not in es.registry
     assert es.checks.exact is exact
 
 
-@pytest.mark.parametrize("factory", [exact, contains, length])
+@pytest.mark.parametrize("factory", [exact, contains, length, numeric_tolerance])
 def test_factories_accept_a_custom_key(factory):
     assert factory(key="custom").key == "custom"
+
+
+@pytest.mark.parametrize("factory", [exact, contains, length, numeric_tolerance])
+def test_key_is_keyword_only_so_payloads_cannot_be_mistaken_for_it(factory):
+    with pytest.raises(TypeError):
+        factory("custom")
+    with pytest.raises(TypeError):
+        regex("order_id", r"ORD-\d+")
+
+
+# ── review findings on PR 2 ──────────────────────────────────────────────────
+
+
+def test_exact_without_a_reference_never_passes_on_null_output():
+    no_ref = Sample(id="n", input="q")
+    for out in (Output.failed("timeout"), Output(value="null"), Output(value=None)):
+        score = exact()(no_ref, out)
+        assert score.passed is False and score.error is not None
+    with_null = Sample(id="m", input="q", expected={"x": None})
+    assert exact(path="x")(with_null, Output(value=None)).passed is False
+
+
+def test_contains_materialises_iterators_and_passes_vacuously_on_no_needles():
+    chk = contains(needles=(n for n in ["alpha", "beta"]))
+    assert chk(S, Output(value="alpha beta")).passed
+    assert chk(S, Output(value="zzz")).passed is False
+    empty = Sample(id="e", input="q", expected={"must_include": []})
+    for ra in (True, False):
+        score = contains(require_all=ra)(empty, Output(value="anything"))
+        assert score.passed is True and score.value == 1.0
+
+
+def test_json_schema_honours_the_schema_draft_and_rejects_bad_schemas():
+    draft4 = {
+        "$schema": "http://json-schema.org/draft-04/schema#",
+        "type": "number",
+        "maximum": 10,
+        "exclusiveMaximum": True,
+    }
+    assert json_schema(draft4)(S, Output(value=5)).passed
+    assert json_schema(draft4)(S, Output(value=10)).passed is False
+    with pytest.raises(ValueError, match="invalid schema"):
+        json_schema({"type": "strng"})
+
+
+def test_numeric_tolerance_non_json_output_is_a_fail_not_an_error():
+    score = numeric_tolerance(expected=1, output_path="total")(S, Output(value="the total is 1"))
+    assert score.passed is False and score.error is None
+    assert score.reason.startswith("not valid JSON")
+
+
+def test_dig_only_indexes_lists_with_decimal_digits():
+    from evalstone.checks.deterministic import _MISSING, _dig
+
+    assert _dig([1, 2], "1") == 2
+    assert _dig([1, 2], "²") is _MISSING

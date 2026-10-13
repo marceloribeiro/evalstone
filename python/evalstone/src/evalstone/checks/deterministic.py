@@ -13,12 +13,17 @@ import json
 import math
 import re
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from evalstone.checks import CheckFn, FunctionCheck
-from evalstone.dataset import Sample
-from evalstone.output import Output
+import jsonschema
+from jsonschema.validators import validator_for
+
+from evalstone.checks._base import CheckFn, FunctionCheck
 from evalstone.score import CheckKind, Score
+
+if TYPE_CHECKING:
+    from evalstone.dataset import Sample
+    from evalstone.output import Output
 
 _MISSING = object()
 
@@ -31,7 +36,7 @@ def _dig(value: Any, path: str | None) -> Any:
     for part in path.split("."):
         if isinstance(cur, dict) and part in cur:
             cur = cur[part]
-        elif isinstance(cur, list) and part.isdigit() and int(part) < len(cur):
+        elif isinstance(cur, list) and part.isdecimal() and int(part) < len(cur):
             cur = cur[int(part)]
         else:
             return _MISSING
@@ -42,7 +47,7 @@ def _reference(sample: Sample, path: str | None, literal: Any) -> Any:
     if literal is not _MISSING:
         return literal
     ref = _dig(sample.expected, path)
-    if ref is _MISSING:
+    if ref is _MISSING or ref is None:
         where = f"expected.{path}" if path else "expected"
         raise ValueError(f"sample {sample.id} has no {where}")
     return ref
@@ -69,8 +74,8 @@ def _as_number(value: Any) -> float:
 
 
 def exact(
-    key: str = "exact",
     *,
+    key: str = "exact",
     expected: Any = _MISSING,
     path: str | None = None,
     case_sensitive: bool = True,
@@ -99,24 +104,30 @@ def exact(
 
 
 def contains(
-    key: str = "contains",
     *,
+    key: str = "contains",
     needles: Iterable[str] | str = _MISSING,  # type: ignore[assignment]
     path: str | None = "must_include",
     require_all: bool = True,
     case_sensitive: bool = False,
 ) -> FunctionCheck:
     """Every (or any) needle appears in the output text. Needles default to
-    ``sample.expected.must_include`` (a string or a list)."""
+    ``sample.expected.must_include`` (a string or a list). An empty needle set
+    passes vacuously."""
+    literal: Any = _MISSING
+    if needles is not _MISSING:  # materialise once: an iterator must not be consumed per sample
+        literal = [needles] if isinstance(needles, str) else [str(n) for n in needles]
 
     def fn(sample: Sample, output: Output) -> Score:
-        ref = _reference(sample, path, needles)
+        ref = _reference(sample, path, literal)
         wanted = [ref] if isinstance(ref, str) else [str(n) for n in ref]
+        if not wanted:
+            return Score.ok("no needles")
         hay = output.text if case_sensitive else output.text.lower()
         hits = [n for n in wanted if (n if case_sensitive else n.lower()) in hay]
         missing = [n for n in wanted if n not in hits]
         ok = not missing if require_all else bool(hits)
-        value = len(hits) / len(wanted) if wanted else 1.0
+        value = len(hits) / len(wanted)
         reason = "" if ok else f"missing {missing!r}"
         return Score(value=value, passed=ok, reason=reason)
 
@@ -125,8 +136,8 @@ def contains(
 
 def regex(
     pattern: str,
-    key: str = "regex",
     *,
+    key: str = "regex",
     flags: int = 0,
     must_match: bool = True,
 ) -> FunctionCheck:
@@ -142,14 +153,18 @@ def regex(
     return FunctionCheck(key, fn, kind=CheckKind.DETERMINISTIC)
 
 
-def json_schema(schema: dict[str, Any] | type, key: str = "json_schema") -> FunctionCheck:
-    """The output is valid JSON and conforms to ``schema`` — a JSON Schema dict or a
-    pydantic model class."""
+def json_schema(schema: dict[str, Any] | type, *, key: str = "json_schema") -> FunctionCheck:
+    """The output is valid JSON and conforms to ``schema`` — a JSON Schema dict (the draft
+    named by ``$schema``, 2020-12 when absent) or a pydantic model class. A malformed
+    schema is rejected here, not once per sample at run time."""
     validate: Callable[[Any], None]
     if isinstance(schema, dict):
-        import jsonschema
-
-        validator = jsonschema.Draft202012Validator(schema)
+        cls = validator_for(schema, default=jsonschema.Draft202012Validator)
+        try:
+            cls.check_schema(schema)
+        except jsonschema.SchemaError as exc:
+            raise ValueError(f"json_schema {key!r}: invalid schema: {exc.message}") from None
+        validator = cls(schema)
 
         def validate(value: Any) -> None:
             errors = sorted(validator.iter_errors(value), key=lambda e: list(e.path))
@@ -186,8 +201,8 @@ def json_schema(schema: dict[str, Any] | type, key: str = "json_schema") -> Func
 
 
 def numeric_tolerance(
-    key: str = "numeric_tolerance",
     *,
+    key: str = "numeric_tolerance",
     expected: Any = _MISSING,
     path: str | None = None,
     output_path: str | None = None,
@@ -199,7 +214,13 @@ def numeric_tolerance(
 
     def fn(sample: Sample, output: Output) -> Score:
         ref = _as_number(_reference(sample, path, expected))
-        raw = output.value if output_path is None else _dig(_as_json(output), output_path)
+        if output_path is None:
+            raw = output.value
+        else:
+            try:
+                raw = _dig(_as_json(output), output_path)
+            except json.JSONDecodeError as exc:
+                return Score.fail(f"not valid JSON: {exc.msg}")
         if raw is _MISSING:
             return Score.fail(f"output has no {output_path}")
         try:
@@ -214,13 +235,14 @@ def numeric_tolerance(
 
 
 def length(
-    key: str = "length",
     *,
+    key: str = "length",
     max_chars: int | None = None,
     max_words: int | None = None,
     min_chars: int = 0,
 ) -> FunctionCheck:
-    """The output text is non-empty (``min_chars``) and under the given limits."""
+    """The output text is at least ``min_chars`` long (0 by default — pass ``min_chars=1``
+    to reject empty output) and under the given limits."""
 
     def fn(sample: Sample, output: Output) -> Score:
         text = output.text.strip()
@@ -243,8 +265,15 @@ def python(
     kind: CheckKind | str = CheckKind.DETERMINISTIC,
     version: int = 1,
 ) -> FunctionCheck:
-    """Any ``fn(sample, output[, ctx]) -> Score | bool | float`` as a check, unregistered."""
-    return FunctionCheck(key or fn.__name__, fn, kind=CheckKind(kind), version=version)
+    """Any ``fn(sample, output[, ctx]) -> Score | bool | float`` as a check, unregistered.
+
+    The key defaults to the function's name; lambdas, partials and callable
+    objects have no usable name, so they need an explicit ``key``.
+    """
+    name = getattr(fn, "__name__", None)
+    if key is None and (not name or name == "<lambda>"):
+        raise ValueError("python(): give an explicit key for a lambda, partial or callable object")
+    return FunctionCheck(key or name, fn, kind=CheckKind(kind), version=version)
 
 
 __all__ = ["contains", "exact", "json_schema", "length", "numeric_tolerance", "python", "regex"]
