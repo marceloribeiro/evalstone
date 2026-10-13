@@ -1,0 +1,88 @@
+# Evalstone center — for people TRYING the center, not for contributors (they run Postgres and
+# Redis natively; see python/evalstone-api/README.md). Copy env.docker.example to .env, set
+# the three secrets, then `docker compose up`. The API is at http://localhost:8181.
+name: evalstone
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evalstone
+      POSTGRES_PASSWORD: ${DB_PASS:?set DB_PASS in .env}
+      POSTGRES_DB: evalstone
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evalstone -d evalstone"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./python/evalstone-api
+    restart: unless-stopped
+    command: ["api"]
+    env_file: .env
+    environment: &api-env
+      APP_ENV: ${APP_ENV:-production}
+      DB_USER: evalstone
+      DB_PASS: ${DB_PASS}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: evalstone
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - "${API_PORT:-8181}:8181"
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8181/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  worker:
+    build: ./python/evalstone-api
+    restart: unless-stopped
+    command: ["worker"]
+    env_file: .env
+    environment: *api-env
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:  # the node answers its own ping once it is subscribed to the broker
+      test: ["CMD-SHELL", "celery -A app.worker.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+  beat:
+    build: ./python/evalstone-api
+    restart: unless-stopped
+    command: ["beat"]
+    env_file: .env
+    environment: *api-env
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  postgres-data:
+  redis-data:

@@ -33,7 +33,7 @@ live under [`docs/`](docs).
 Each package has its own `README.md` and a `justfile` with the standard
 recipes (`just install`, `just up`, `just check`, `just test`, …).
 PostgreSQL and Redis are expected to run natively on your machine; the
-`docker-compose.yml` in the repo root (when it lands) is for people trying the
+`docker-compose.yml` in the repo root is for people trying the
 center, not for contributors' day-to-day work.
 
 ## Pull requests
