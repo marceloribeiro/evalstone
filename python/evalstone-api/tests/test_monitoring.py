@@ -444,7 +444,7 @@ def test_alert_resolves_on_recovery_even_below_min_n(client, project, db):
     kh = {"Authorization": f"Bearer {_key(client, project)}"}
     client.post(_p(project, "/traces"), json={"traces": _traces(6, bad={0, 1, 2})}, headers=kh)
     assert svc.score_monitor(db, uuid.UUID(m["id"]))["alert"]["state"] == "opened"
-    # the window now only holds the 6 (3 bad): still open; make the window tiny → recovery with n < min_n
+    # still open; shrink the window so the failures age out → recovery with n < min_n
 
     client.patch(
         _p(project, f"/monitors/{m['id']}"),
