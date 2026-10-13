@@ -15,6 +15,7 @@ from app.routers import (
     datasets,
     health,
     labels,
+    model_proxy,
     organizations,
     projects,
     providers,
@@ -46,6 +47,7 @@ app.include_router(providers.router)
 app.include_router(datasets.router)
 app.include_router(runs.router)
 app.include_router(labels.router)
+app.include_router(model_proxy.router)
 
 
 @app.exception_handler(DomainError)
