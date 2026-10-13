@@ -81,7 +81,7 @@ export function ModelOrNot() {
       }
     >
       <div className="grid gap-8 lg:grid-cols-2">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <BulletCard
             kicker="1 · the quality signal"
             title="LLM-as-judge, with your model"
@@ -97,7 +97,7 @@ export function ModelOrNot() {
             dot="bg-fd-foreground/50"
           />
         </div>
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <CodePanel title="evalstone.yaml" code={YAML} />
           <p className="text-sm leading-relaxed text-fd-muted-foreground">
             Three native adapters: <code>anthropic</code> through the official SDK, <code>gemini</code>{' '}

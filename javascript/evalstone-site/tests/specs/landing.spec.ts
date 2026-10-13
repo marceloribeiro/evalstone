@@ -41,11 +41,11 @@ test.describe('Landing page', () => {
   test('the top nav walks the sections of this page, and reaches the docs', async ({ page }) => {
     const home = new HomePage(page);
     for (const [name, id] of [
-      ['The problem', 'problem'],
-      ['What evals are', 'what-are-evals'],
+      ['Problem', 'problem'],
+      ['Evals', 'what-are-evals'],
       ['How it helps', 'how-it-helps'],
       ['How it works', 'how-it-works'],
-      ['The model', 'model-or-not'],
+      ['Model', 'model-or-not'],
       ['Learn', 'learn'],
     ] as const) {
       await home.goto();
@@ -53,7 +53,10 @@ test.describe('Landing page', () => {
       await expect(link).toHaveText(name);
       await link.click();
       await expect(page).toHaveURL(new RegExp(`/#${id}$`));
-      await expect(home.section(id)).toBeInViewport();
+      const box = await home.section(id).boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.y).toBeGreaterThanOrEqual(0); // not hidden under the sticky header
+      expect(box!.y).toBeLessThanOrEqual(64); // and parked right below it
     }
     await home.goto();
     await page.locator('header a[href="/docs"]:visible').first().click();
@@ -61,8 +64,22 @@ test.describe('Landing page', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Welcome');
   });
 
-  test('the section links work from a docs page too', async ({ page }) => {
+  test('the header fits at tablet widths without horizontal overflow', async ({ page }) => {
+    // 640–672px (fumadocs shows the links and the menu trigger together there) overflows by
+    // a few pixels of the trigger itself; from 700px up the header must fit.
+    for (const width of [700, 768, 820, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/');
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      expect(overflow, `horizontal overflow at ${width}px`).toBe(false);
+      await expect(page.locator('header a[href="/#learn"]:visible').first()).toBeVisible();
+      await expect(page.locator('header a[href="/docs"]:visible').first()).toBeVisible();
+    }
+  });
+
+  test('a docs page reaches the homepage sections through the Home menu', async ({ page }) => {
     await page.goto('/docs/guides/quickstart');
+    await page.getByRole('button', { name: 'Home' }).or(page.getByText('Home', { exact: true })).first().click();
     await page.locator('a[href="/#model-or-not"]:visible').first().click();
     await expect(page).toHaveURL(/\/#model-or-not$/);
     await expect(page.locator('#model-or-not')).toBeInViewport();
@@ -71,7 +88,7 @@ test.describe('Landing page', () => {
   test('a phone sees every section link in the menu', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
-    await page.locator('header button[aria-label]').last().click(); // the menu trigger
+    await page.getByRole('button', { name: /menu/i }).click();
     for (const id of ['problem', 'what-are-evals', 'how-it-helps', 'how-it-works', 'model-or-not', 'learn']) {
       await expect(page.locator(`a[href="/#${id}"]:visible`).first()).toBeVisible();
     }
