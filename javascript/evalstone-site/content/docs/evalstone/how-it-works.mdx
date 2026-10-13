@@ -9,30 +9,18 @@ description: What runs with no model, what needs one, and how a judge reaches yo
   Anthropic SDK and the MCP server).
 </Callout>
 
-Evalstone is a library that computes scores and decisions. It has no account,
-no proxy and no relay: when a check needs a model, the library calls the
-provider you configured, directly from the machine running the suite, with a
-key from your environment. Everything else runs offline.
+Evalstone measures quality in three layers. **A judge** — a model you choose,
+given a rubric and a small scale — scores what no string match can: whether
+an answer is good. **Human labels** are the ground truth that judge is
+calibrated against. **Deterministic checks** guard the contracts (schema,
+facts, length, safety, tool calls) exactly and for free, and run first so a
+broken output never reaches a paid call.
 
-## What runs with no model at all
+Evalstone itself has no account, no proxy and no relay: when a check needs a
+model, the library calls the provider you configured, directly from the
+machine running the suite, with a key from your environment.
 
-| Piece | Model? |
-| --- | --- |
-| Deterministic checks: `exact`, `contains`, `regex`, `json_schema`, `length`, `numeric_tolerance` | no |
-| Safety rules: `safety.refusal`, `safety.no_pii`, `safety.forbidden` | no |
-| Agent-trajectory checks: `trajectory.*` | no |
-| Human labels: `evalstone label` and the `human` check | no |
-| Datasets, targets (`recorded`, `callable`, `http`), suites, gates, reports, `compare` | no |
-| The CLI, the pytest plugin, the GitHub Action, the MCP server | no |
-
-The quickstart's first run is exactly this: recorded outputs, deterministic
-checks, a gate. Nothing is called, nothing costs money, and the result is the
-same every time.
-
-A `callable` or `http` target runs *your* code, which may well call a model;
-that is your feature under test, not Evalstone.
-
-## What needs a model
+## The judge: where quality is measured
 
 | Piece | What it does with the model |
 | --- | --- |
@@ -41,9 +29,14 @@ that is your feature under test, not Evalstone.
 | `comparison.pairwise` | asks which of two outputs is better, in both orders to cancel position bias |
 | a `prompt` target | the thing under test is a prompt template run through a model you name |
 
-Chapter 6 of Evals 101, [LLM-as-judge](/docs/learn/llm-as-judge), is the
-background: why small scales, why a rubric, why judges get calibrated against
-human labels.
+A judge is a model, so it is reliable only when measured. Evalstone's judges
+use a small scale (a level and a reason, as JSON), hide the reference unless
+asked, judge both orders in a pairwise comparison, and treat a refusal, a
+network error or malformed JSON as an **error, never a pass**. Human labels
+(`evalstone label`, the `human` check) are what a judge gets calibrated
+against: agreement between the two is the number that says whether the judge
+can be trusted on your data. Chapter 6 of Evals 101,
+[LLM-as-judge](/docs/learn/llm-as-judge), is the background.
 
 ## How a judge reaches a provider
 
@@ -68,7 +61,10 @@ Three adapters ship with the library:
 | `gemini` | Google's Gemini API | `GEMINI_API_KEY` |
 
 OpenRouter is not built in and not required; it is one `base_url` the `openai`
-adapter can point at, like Ollama, vLLM, Groq or Together:
+adapter can point at, like Ollama, vLLM, Groq or Together. One OpenRouter entry
+gives you every model it hosts, and switching the judge is one line:
+`judges.default_model` for the project, or `model:` on a single check (a
+switched judge re-judges, since verdicts are cached per model).
 
 ```yaml
 providers:
@@ -108,6 +104,25 @@ Rules that hold for every adapter:
 - **Thresholds live outside the cache.** A judge caches the model's raw level
   and reason; `pass_level` / `threshold` are applied on read, so changing the
   bar within a process does not re-spend.
+
+## The guardrails: what runs with no model at all
+
+| Piece | Model? |
+| --- | --- |
+| Deterministic checks: `exact`, `contains`, `regex`, `json_schema`, `length`, `numeric_tolerance` | no |
+| Safety rules: `safety.refusal`, `safety.no_pii`, `safety.forbidden` | no |
+| Agent-trajectory checks: `trajectory.*` | no |
+| Human labels: `evalstone label` and the `human` check | no |
+| Datasets, targets (`recorded`, `callable`, `http`), suites, gates, reports, `compare` | no |
+| The CLI, the pytest plugin, the GitHub Action, the MCP server | no |
+
+These do not judge quality; they catch the contract failures that break
+production, exactly and for free, before any model is called. The quickstart's
+first run is exactly this: recorded outputs, deterministic checks, a gate.
+Nothing is called, nothing costs money, and the result is the same every time.
+
+A `callable` or `http` target runs *your* code, which may well call a model;
+that is your feature under test, not Evalstone.
 
 ## Where the data goes
 

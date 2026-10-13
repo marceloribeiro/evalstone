@@ -23,7 +23,7 @@ const STEPS = [
   },
   {
     title: 'Run it anywhere',
-    body: 'evalstone run on your laptop, in pytest, in a GitHub Action, or from an MCP client. Deterministic checks need no model; judge checks call the provider you name with your own key, cached and priced.',
+    body: 'evalstone run on your laptop, in pytest, in a GitHub Action, or from an MCP client. The judge scores quality with the model you name, on your key; cheap contract checks run first, so a broken output never reaches a paid call.',
   },
   {
     title: 'Keep the history',

@@ -22,16 +22,35 @@ test.describe('Landing page', () => {
     await expect(page.getByRole('heading', { name: 'Evals 101, nine short chapters' })).toBeVisible();
   });
 
-  test('says what needs a model and what does not', async ({ page }) => {
+  test('puts the judge first and says what runs without a model', async ({ page }) => {
     const home = new HomePage(page);
     await home.goto();
 
     const section = home.section('model-or-not');
-    await expect(section.getByRole('heading', { name: 'No model needed' })).toBeVisible();
-    await expect(section.getByRole('heading', { name: 'Needs a model, yours' })).toBeVisible();
+    const headings = await section.getByRole('heading', { level: 3 }).allTextContents();
+    expect(headings).toEqual([
+      'LLM-as-judge, with your model',
+      'Human labels',
+      'Deterministic checks, no model needed',
+    ]);
     await expect(section.getByText('openrouter.ai')).toBeVisible();
     await section.getByRole('link', { name: /How Evalstone works, in full/ }).click();
     await expect(page).toHaveURL(/\/docs\/evalstone\/how-it-works$/);
+  });
+
+  test('the top nav reaches every section of the docs', async ({ page }) => {
+    const home = new HomePage(page);
+    await home.goto();
+    const nav = page.getByRole('navigation').first();
+    for (const [name, path] of [
+      ['Learn evals', '/docs/learn'],
+      ['How it works', '/docs/evalstone/how-it-works'],
+      ['Evalstone', '/docs/evalstone'],
+      ['Guides', '/docs/guides/quickstart'],
+      ['Reference', '/docs/reference/cli'],
+    ] as const) {
+      await expect(nav.locator(`a[href="${path}"]`).first()).toHaveText(name);
+    }
   });
 
   test('the learning CTA opens Evals 101', async ({ page }) => {
