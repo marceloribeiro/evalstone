@@ -131,8 +131,8 @@ def main() -> None:
         .json()
     )
     say(
-        "dataset golden v%s (%s samples) hash matches library: %s"
-        % (v["version"], v["sample_count"], v["content_hash"] == ds.content_hash)
+        f"dataset golden v{v['version']} ({v['sample_count']} samples) "
+        f"hash matches library: {v['content_hash'] == ds.content_hash}"
     )
 
     # the deterministic suites, run by the real library attached to this center
