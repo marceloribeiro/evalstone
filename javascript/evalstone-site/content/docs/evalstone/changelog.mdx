@@ -10,6 +10,19 @@ first; semantic versioning, tags `lib-vX.Y.Z` in the
 [repository](https://github.com/marceloribeiro/evalstone/blob/main/python/evalstone/CHANGELOG.md).
 Install or upgrade with `pip install -U evalstone`.
 
+## 0.2.4 — 2026-10-14
+
+A gate can require its baseline (suggested in feedback on the launch post).
+
+- `Gate(require_baseline=True)` (YAML: `gate: { max_regression: 0.02, require_baseline: true }`)
+  fails the gate when the regression comparison cannot run: no baseline, a baseline that scored
+  nothing, or one from a different dataset version or check set. Without it nothing changes: a
+  missing baseline is `SKIP regression: no baseline run`, a different dataset version is a
+  `WARN`, and the gate can still pass. Use it in CI once a baseline report exists, so an
+  expired artifact or a wrong `--baseline` path fails the job instead of turning the
+  regression check off.
+- `require_baseline` without `max_regression` is a configuration error.
+
 ## 0.2.3 — 2026-10-14
 
 Promote pins the model the verdicts were routed through, found on the demo project's first
