@@ -8,6 +8,8 @@ export type Organization = { id: string; name: string; website_url: string | nul
 /** `GET /organizations/{id}`: the organization plus the caller's role in it. */
 export type OrganizationDetail = Organization & { role: Role };
 export type Member = { id: string; role: Role; user: User; created_at: string };
+/** `InvitationOut` — a pending (or accepted) invitation; an existing user joins at once, a new one on registration. */
+export type Invitation = { id: string; email: string; role: Role; created_at: string; accepted_at: string | null; status: "pending" | "accepted" };
 
 export type Project = {
   id: string;
