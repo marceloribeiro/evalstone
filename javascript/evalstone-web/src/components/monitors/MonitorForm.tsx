@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -88,12 +87,8 @@ export function MonitorForm({ organizationId, projectId, base }: { organizationI
             ) : catalog.loading ? (
               <p className="text-xs text-muted-foreground">Loading…</p>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                The catalog is empty —{" "}
-                <Link href={`/o/${organizationId}/checks`} className="underline-offset-4 hover:underline">
-                  add a check
-                </Link>{" "}
-                first.
+              <p className="text-xs text-muted-foreground" data-testid="catalog-empty">
+                The organization&apos;s check catalog is empty. Add a check first — the catalog editor is the next slice; until then <code>POST /organizations/{"{id}"}/checks</code> or the library&apos;s <code>checks/yaml</code> push.
               </p>
             )}
           </fieldset>
@@ -104,11 +99,25 @@ export function MonitorForm({ organizationId, projectId, base }: { organizationI
             </div>
             <div className="space-y-1">
               <Label>Metric</Label>
-              <PickOne label="Metric" value={metric} items={METRIC_LABEL} onChange={(v) => setMetric((v as AlertPolicy["metric"]) ?? "pass_rate")} className="w-full" />
+              <PickOne
+                label="Metric"
+                value={metric}
+                items={METRIC_LABEL}
+                onChange={(v) => {
+                  const next = (v as AlertPolicy["metric"]) ?? "pass_rate";
+                  if (next !== metric) {
+                    // the threshold is a percentage for pass rate and a 0–1 value for mean score: convert, do not keep
+                    const n = Number(threshold);
+                    if (Number.isFinite(n)) setThreshold(next === "pass_rate" ? String(Math.round(n * 100 * 100) / 100) : String(Math.round(n) / 100));
+                  }
+                  setMetric(next);
+                }}
+                className="w-full"
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="monitor-threshold">Alert below {metric === "pass_rate" ? "(%)" : "(0–1)"}</Label>
-              <Input id="monitor-threshold" type="number" step={metric === "pass_rate" ? 1 : 0.01} min={0} max={metric === "pass_rate" ? 100 : 1} value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+              <Input id="monitor-threshold" type="number" step="any" min={0} max={metric === "pass_rate" ? 100 : 1} value={threshold} onChange={(e) => setThreshold(e.target.value)} />
             </div>
             <div className="space-y-1">
               <Label htmlFor="monitor-window">Window (minutes)</Label>

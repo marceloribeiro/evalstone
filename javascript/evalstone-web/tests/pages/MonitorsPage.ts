@@ -22,7 +22,7 @@ export class MonitorsPage {
     await this.page.getByRole("button", { name: "New monitor" }).click();
     const dialog = this.page.getByRole("dialog");
     await dialog.getByLabel("Name").fill(name);
-    for (const c of checks) await dialog.getByRole("checkbox", { name: new RegExp(`^${c} `) }).check();
+    for (const c of checks) await dialog.getByRole("checkbox", { name: new RegExp(`^${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} `) }).check();
     if (opts.sample) await dialog.getByLabel("Sample rate (%)").fill(opts.sample);
     if (opts.threshold) await dialog.getByLabel(/Alert below/).fill(opts.threshold);
     if (opts.window) await dialog.getByLabel("Window (minutes)").fill(opts.window);
@@ -39,6 +39,11 @@ export class MonitorsPage {
 
   window() {
     return this.page.locator('dl[aria-label="Window"]');
+  }
+
+  /** The value of one window tile by its label. */
+  tile(label: RegExp | string) {
+    return this.window().locator("div").filter({ has: this.page.locator("dt", { hasText: label }) }).locator("dd");
   }
 
   status() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,19 @@ export function TraceTable({ projectId }: { projectId: string }) {
     () => api<Page<Trace>>(`/projects/${projectId}/traces`, { query: { offset, limit: LIMIT, flagged: flaggedOnly || undefined } }),
     [projectId, offset, flaggedOnly],
   );
-  useLiveEvent("traces.stored", () => traces.reload());
+  // apps push traces continuously: coalesce the live frames into one reload per 1.5 s (trailing)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reload = traces.reload;
+  useLiveEvent("traces.stored", () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      reload();
+    }, 1_500);
+  });
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
 
   const flag = async (t: Trace) => {
     try {

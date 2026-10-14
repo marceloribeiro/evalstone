@@ -17,6 +17,7 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useLiveEvent } from "@/contexts/WebSocketContext";
 import { useLoader } from "@/hooks/useLoader";
 import { api, errorMessage } from "@/lib/api";
+import { useAction } from "@/hooks/useAction";
 import { pct, when } from "@/lib/format";
 import { metricValue, policyText } from "@/lib/monitoring";
 import { isAdmin } from "@/lib/roles";
@@ -27,13 +28,14 @@ export function MonitorDetail({ monitorId }: { monitorId: string }) {
   const router = useRouter();
   const { organization, project } = useWorkspace();
   const monitor = useLoader(() => api<Monitor>(`/projects/${project!.id}/monitors/${monitorId}`), [project?.id, monitorId]);
-  const window = useLoader(() => api<MonitorWindow>(`/projects/${project!.id}/monitors/${monitorId}/window`), [project?.id, monitorId]);
+  const metrics = useLoader(() => api<MonitorWindow>(`/projects/${project!.id}/monitors/${monitorId}/window`), [project?.id, monitorId]);
   const alerts = useLoader(() => api<Alert[]>(`/projects/${project!.id}/alerts`).then((all) => all.filter((a) => a.monitor_id === monitorId)), [project?.id, monitorId]);
-  const [busy, setBusy] = useState(false);
+  const { busy, act: run } = useAction();
+  const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const refresh = () => {
     monitor.reload();
-    window.reload();
+    metrics.reload();
     alerts.reload();
   };
   useLiveEvent("monitor.scored", (e) => e.monitor_id === monitorId && refresh());
@@ -59,35 +61,25 @@ export function MonitorDetail({ monitorId }: { monitorId: string }) {
     );
   }
   const m = monitor.data;
-  const w = window.data;
+  const w = metrics.data;
   const metric = m.alert_policy.metric;
   const current = w ? (metric === "pass_rate" ? w.pass_rate : w.mean_score) : null;
-  const below = current != null && current < m.alert_policy.threshold;
+  // red only when the policy could actually alert: below the threshold AND enough traces (min_n)
+  const below = current != null && current < m.alert_policy.threshold && (w?.n ?? 0) >= m.alert_policy.min_n;
   const openAlert = alerts.data?.find((a) => !a.resolved_at);
 
-  const act = async (label: string, fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-      toast.success(label);
-      refresh();
-    } catch (err) {
-      toast.error(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const act = (label: string, fn: () => Promise<unknown>) => run(label, fn, refresh);
   const setStatus = (status: "active" | "paused") => act(status === "paused" ? "Monitor paused (open alerts resolved)" : "Monitor resumed", () => api(`/projects/${project.id}/monitors/${m.id}`, { method: "PATCH", body: { status } }));
   const scoreNow = () => act("Scoring pass enqueued", () => api(`/projects/${project.id}/monitors/${m.id}/score`, { method: "POST" }));
   const remove = async () => {
-    setBusy(true);
+    setDeleting(true);
     try {
       await api(`/projects/${project.id}/monitors/${m.id}`, { method: "DELETE" });
       toast.success(`Monitor "${m.name}" deleted`);
       router.push(`${base}/monitors`);
     } catch (err) {
       toast.error(errorMessage(err));
-      setBusy(false);
+      setDeleting(false);
     }
   };
 
@@ -123,7 +115,7 @@ export function MonitorDetail({ monitorId }: { monitorId: string }) {
                       <DialogDescription>Its open alerts are resolved; the traces stay.</DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                      <Button variant="destructive" disabled={busy} onClick={remove}>
+                      <Button variant="destructive" disabled={busy || deleting} onClick={remove}>
                         Delete
                       </Button>
                     </DialogFooter>

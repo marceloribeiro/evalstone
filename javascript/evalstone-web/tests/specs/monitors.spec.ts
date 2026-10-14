@@ -14,16 +14,26 @@ test.describe("Monitors and alerts", () => {
     const monitors = new MonitorsPage(page);
     await monitors.goto(org.id, project.id);
     await expect(page.getByText("No monitors yet")).toBeVisible();
+    // switching the metric converts the threshold between % and 0–1 instead of keeping a number on the wrong scale
+    await page.getByRole("button", { name: "New monitor" }).click();
+    await page.getByRole("combobox", { name: "Metric" }).click();
+    await page.getByRole("option", { name: "mean score" }).click();
+    await expect(page.getByLabel(/Alert below/)).toHaveValue("0.9");
+    await page.getByRole("combobox", { name: "Metric" }).click();
+    await page.getByRole("option", { name: "pass rate" }).click();
+    await expect(page.getByLabel(/Alert below/)).toHaveValue("90");
+    await page.keyboard.press("Escape");
     await monitors.createMonitor("prod answers", ["has-paris"], { sample: "100", threshold: "90", window: "60", minN: "10" });
     await expect(monitors.status()).toHaveText("active");
-    await expect(monitors.window()).toContainText("0"); // nothing scored yet
+    await expect(monitors.tile(/Traces in the last/)).toHaveText("0"); // nothing scored yet
+    await expect(monitors.tile("Pass rate")).toHaveText("—");
     await expect(monitors.traces()).toContainText("No traces yet");
 
     await pushTraces(seed, project.id, traces(20, 0, [1, 5, 9, 13]));
     await expect(page.getByTestId("traces-count")).toHaveText("20 traces"); // live on traces.stored
     await monitors.scoreNow(); // eager Celery in dev/CI: the pass runs before the POST returns
-    await expect(monitors.window()).toContainText("80.0%");
-    await expect(monitors.window()).toContainText("open · 80.0%");
+    await expect(monitors.tile("Pass rate")).toHaveText("80.0%");
+    await expect(monitors.tile("Alert")).toHaveText("open · 80.0%");
     await expect(monitors.alertRows("open")).toHaveCount(1);
 
     await monitors.gotoAlerts(org.id, project.id);
@@ -36,10 +46,10 @@ test.describe("Monitors and alerts", () => {
     await monitors.goto(org.id, project.id);
     await monitors.openMonitor("prod answers");
     await monitors.scoreNow();
-    await expect(monitors.window()).toContainText("93.3%"); // 56/60
+    await expect(monitors.tile("Pass rate")).toHaveText("93.3%"); // 56/60
     await expect(monitors.alertRows("resolved")).toHaveCount(1);
     await expect(monitors.alertRows("open")).toHaveCount(0);
-    await expect(monitors.window()).toContainText("none");
+    await expect(monitors.tile("Alert")).toHaveText("none");
 
     const flagged = await monitors.flagFirst();
     await page.getByRole("button", { name: "Flagged only" }).click();
@@ -69,7 +79,7 @@ test.describe("Monitors and alerts", () => {
     await monitors.goto(org.id, project.id);
     await expect(page.getByRole("button", { name: "New monitor" })).toHaveCount(0);
     await monitors.openMonitor("ro monitor");
-    await expect(monitors.window()).toContainText("66.7%");
+    await expect(monitors.tile("Pass rate")).toHaveText("66.7%");
     await expect(page.getByRole("button", { name: "Score now" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Pause" })).toHaveCount(0);
     await monitors.gotoAlerts(org.id, project.id);
