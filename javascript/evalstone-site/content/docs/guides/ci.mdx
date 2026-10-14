@@ -76,9 +76,11 @@ so the comment is skipped and the job summary is the report. The comment is
 The step runs `evalstone run`, so an attached project (a `center:` block in
 its YAML) **pushes every Action run** to the center; put the project's ingest
 key in `env:` as `EVALSTONE_API_KEY` and drop the provider key — the center's
-judge settings pick the model. Without the key the run is still judged, the
-push fails, and the step only warns (exit code unchanged). There is no
-`judge-model` input: the model is the YAML's, or the center's.
+judge settings pick the model. Without the key the step **exits 2 before any
+sample runs** — attached, the center client is what judges. A push that fails
+*after* the run (the center unreachable, say) only warns and leaves the exit
+code alone. There is no `judge-model` input: the model is the YAML's, or the
+center's.
 
 | Input | Default | What |
 | --- | --- | --- |

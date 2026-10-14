@@ -117,22 +117,19 @@ Rules that hold for every adapter:
 With a `center:` block the judges' registry is the center's model proxy: the
 library sends the judge prompt to `POST /model/complete` with an ingest key,
 the center resolves the provider from the organization's saved keys and dials
-it. `providers:` and `judges:` in the YAML are then ignored for judges (they
-still serve a `prompt` target). The model a judge uses is decided in this
-order, first match wins:
-
-1. `--judge-model provider/model` on the command line (the whole run);
-2. the project's per-check override, set on the center's Judges page
-   (what *Promote* writes);
-3. the check's own `model:`;
-4. the project's default model in the center's judge settings.
+it. `judges:` is then ignored, and `providers:` no longer serves the judges —
+it still serves a `prompt` target, the system under test. The model a judge
+uses follows one precedence: `--judge-model` on the command line, then the
+project's per-check override from the center's Judges page (what *Promote*
+writes), then the check's own `model:`, then the project's default in the
+center; the full list, with what differs standalone, is in the
+[config reference](/docs/reference/config#center).
 
 Verdicts are read from and written to the center's judge cache under the
 resolved model, so one verdict serves every machine and a changed override
-re-judges. Standalone, step 2 does not exist and step 4 is `judges.default_model`.
-One caveat: attached, `--judge-model` is not validated before the run — a
-typo'd provider is rejected by the center at the first judge call and surfaces
-as an errored score, which the error-rate gate still catches.
+re-judges. One caveat: attached, `--judge-model` is not validated before the
+run — a typo'd provider is rejected by the center at the first judge call and
+surfaces as an errored score, which the error-rate gate still catches.
 
 ## The guardrails: what runs with no model at all
 

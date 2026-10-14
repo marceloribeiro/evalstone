@@ -84,9 +84,10 @@ report. Standalone (no block) nothing leaves the machine.
 | `push_runs` | `true` | `evalstone run` / `gate` push the report; a failed push warns, never fails |
 | `cache` | `true` | read and write judge verdicts in the center; `false` keeps an in-process cache |
 
-**What changes when attached.** Judges ignore `judges:` and `providers:`: the
-model comes from the project's judge settings in the center, and no provider
-key is needed on the machine running the suite. The system under test does
+**What changes when attached.** `judges:` is ignored and `providers:` no
+longer serves the judges: the judge model comes from the project's judge
+settings in the center, and no judge key is needed on the machine running
+the suite. The system under test does
 not: a `prompt` target still uses the local `providers:` entry and its
 environment key, and `callable`/`http` targets are untouched. `human` checks
 default to `labels: center` (write `labels: center` explicitly to say so;

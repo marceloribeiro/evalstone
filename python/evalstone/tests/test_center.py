@@ -310,27 +310,45 @@ def test_pairwise_honours_the_center_override(cfg):
     )
     check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx)
     assert json.loads(calls.calls[0].request.content)["model"] == "other/big"
-    # The check version (and so the cache key) is built from the same resolved model:
-    # a cache keyed on the override must be hit by a second evaluation, and must NOT be
-    # hit once the override changes.
+
+
+@respx.mock
+def test_pairwise_cache_key_follows_the_center_override(cfg):
+    """The check version (and so the cache key) is built from the same resolved model as
+    the call: a verdict cached under the override is hit again, a changed override is a
+    different version and misses (regression: the key used ``ctx.judge_model or model``)."""
+    from evalstone.checks.comparison import pairwise
     from evalstone.score import MemoryCache
 
+    calls = respx.post(f"{P}/model/complete").mock(
+        return_value=_verdict(text='{"winner": "A", "reason": "clearer"}')
+    )
+    client = CenterClient(cfg)
+    providers = CenterProviders(client, default_model="judge/small")
+    extra = {"center_client": client, "judge_models": {"better": "other/big"}}
     cache = MemoryCache()
-    ctx_cached = Context(providers=ctx.providers, extra=ctx.extra, cache=cache)
-    check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx_cached)
+    check = pairwise(
+        "better", "Which is clearer?", baseline={"s": "baseline answer"}, model="judge/small"
+    )
+    sample, output = Sample(id="s", input="q"), Output(value="candidate")
+
+    ctx = Context(providers=providers, extra=extra, cache=cache)
+    check.evaluate(sample, output, ctx)
     filled = calls.call_count  # both orders were asked once
-    check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx_cached)
-    assert calls.call_count == filled  # served from the cache
+    assert len(cache._data) == 1
     key_before = next(iter(cache._data))
+    assert check.evaluate(sample, output, ctx).raw["cached"] is True
+    assert calls.call_count == filled  # served from the cache
+
     ctx_other = Context(
-        providers=ctx.providers,
-        extra={**ctx.extra, "judge_models": {"better": "other/small"}},
+        providers=providers,
+        extra={**extra, "judge_models": {"better": "other/small"}},
         cache=cache,
     )
-    check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx_other)
+    assert check.evaluate(sample, output, ctx_other).raw.get("cached") is not True
     assert calls.call_count > filled  # a changed override is a different version → miss
     assert json.loads(calls.calls[-1].request.content)["model"] == "other/small"
-    assert set(cache._data) != {key_before}
+    assert len(cache._data) == 2 and key_before in cache._data
 
 
 @respx.mock

@@ -30,7 +30,11 @@ The `api` container waits for Postgres, runs `alembic upgrade head` (the
 ## Environment
 
 The API reads `.env`. Outside `APP_ENV=development|test` it **refuses to
-start** when any of these is empty or still a published default:
+start** when `JWT_SECRET` or `DOCS_PASSWORD` is empty or still the published
+default, when `PROVIDER_CREDS_KEY` is missing or not a Fernet key, or when
+`REDIS_KEY_PREFIX` is set to an empty string. `DB_PASS` is **not** checked at
+startup: left empty, the API connects without a password and the mistake
+surfaces as a `503` from `/ready` (or the first query).
 
 | Variable | What |
 | --- | --- |
@@ -38,7 +42,7 @@ start** when any of these is empty or still a published default:
 | `JWT_SECRET` | signs sessions; at least 32 bytes — `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'` |
 | `PROVIDER_CREDS_KEY` | a Fernet key that encrypts every provider API key the organizations store. **Set it once and never change it**: rotating it makes every stored key undecryptable |
 | `DOCS_PASSWORD` | with `DOCS_USERNAME` (default `evalstone`), the HTTP basic auth in front of `/docs` and `/openapi.json` |
-| `REDIS_KEY_PREFIX` | the namespace for every Celery key (default `evalstone:`); required, because on a Redis index shared with another app an unprefixed queue is consumed by whichever worker gets there first |
+| `REDIS_KEY_PREFIX` | the namespace for every Celery key; default `evalstone:`, give each app its own when they share a Redis index — an unprefixed queue is consumed by whichever worker gets there first, so an explicitly empty value refuses to start |
 
 The rest has defaults: `APP_PORT` (8181), `REDIS_URL` /
 `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` (one Redis index), `CORS_ORIGINS`

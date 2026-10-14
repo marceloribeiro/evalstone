@@ -143,3 +143,18 @@ def test_show_markdown(in_dir):
         "### Evalstone · `nightly` — ✅ gate passed"
     )
     assert "| `must_include` |" in res.output
+
+
+def test_missing_center_key_is_reported_as_the_center_not_the_flag(in_dir, monkeypatch):
+    """Attached without EVALSTONE_API_KEY, ``--judge-model`` must not blame the flag."""
+    monkeypatch.delenv("EVALSTONE_API_KEY", raising=False)
+    runner.invoke(app, ["init", "--project", "demo"])
+    cfg = in_dir / "evalstone.yaml"
+    cfg.write_text(
+        cfg.read_text()
+        + "center:\n  url: http://center.test\n  project: 11111111-2222-4333-8444-555555555555\n"
+    )
+    res = runner.invoke(app, ["run", "nightly", "--judge-model", "openai/gpt-x"])
+    assert res.exit_code == 2
+    assert "EVALSTONE_API_KEY" in res.output
+    assert "--judge-model" not in res.output
