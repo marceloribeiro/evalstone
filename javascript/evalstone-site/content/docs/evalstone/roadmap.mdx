@@ -9,20 +9,26 @@ The engineering roadmap lives in the repository and is the source of truth:
 ## Built
 
 - Site + learning center (this site).
-- **Library** (first release 0.1.0) — datasets, deterministic checks, targets, suites, runs,
-  gates; judge adapters (OpenAI-compatible, Anthropic, Gemini); RAG, safety,
-  pairwise and trajectory checks; CLI; the `rag-bot` sample. On PyPI since
-  2026-10-13.
+- **Library** — datasets, deterministic checks, targets, suites, runs, gates; judge
+  adapters (OpenAI-compatible, Anthropic, Gemini); RAG, safety, pairwise and trajectory
+  checks; CLI; the `rag-bot` sample. On PyPI since 2026-10-13; **0.2.0 (2026-10-14)**
+  attaches a project to a center.
 - **Integrations** — MCP server, pytest plugin and terminal labeling ship with
   the library; the GitHub Action is hosted in the repository
   (`marceloribeiro/evalstone/action@action-v0`).
+- **Center API + web** — organizations, projects, datasets with versions, run history and
+  diffs, the check catalog, labeling queues, judge calibration and promotion, monitors,
+  alerts and traces, live updates over WebSocket. Self-host with `docker compose`, or use the
+  hosted one at [app.evalstone.com](https://app.evalstone.com) (2026-10-14).
 
 ## Next, in order
 
-1. **Center API** — organizations, projects, datasets, catalog, runs, labeling,
-   calibration, monitoring; docker-compose for self-hosting.
-2. **Center web.**
-3. **Hosted demo.**
+1. A viewer role (the public demo visitor is a member today: read, label, push — not delete).
+2. Judged runs, a calibration and a promoted judge in the demo organization.
+3. Email alerts next to the webhook.
+4. Harvest traces into a dataset version with embedding dedup.
+5. The library pulling the organization's `checks:` from the center at run time.
+6. Bulk judge-cache warming and threshold-based judge promotion.
 
 ## Deferred
 

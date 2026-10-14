@@ -1,5 +1,9 @@
 # Quick start — run the Evalstone center with Docker
 
+The hosted center is at **https://app.evalstone.com** (API: `https://api.evalstone.com`) — sign in
+with the visitor account on the [Center page](https://evalstone.com/docs/evalstone/center) to look
+around before running your own.
+
 For trying the center on one machine. Contributors run Postgres and Redis natively instead
 (see `python/evalstone-api/README.md`).
 
@@ -53,12 +57,13 @@ center:
 ```
 
 ```bash
-pip install ./python/evalstone      # the `center:` attach is in 0.2.0 (unreleased); from the checkout until it ships
+pip install 'evalstone>=0.2.0'      # the `center:` attach shipped in 0.2.0
 EVALSTONE_API_KEY=$KEY evalstone run <suite>     # judged through the center; the run is stored
 ```
 
 Runs, datasets, labels, judge cache, calibrations, monitors and alerts all live in the center
-now. The web app (Phase 4) sits on top of the same API.
+now. The web app (`javascript/evalstone-web`, a standalone Next.js build) sits on top of the same
+API: set its `NEXT_PUBLIC_API_URL` to the API and serve it next to it.
 
 ## Operating it
 

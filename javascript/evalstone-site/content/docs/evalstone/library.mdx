@@ -82,7 +82,8 @@ providers:
   anthropic: { api_key_env: ANTHROPIC_API_KEY }
 center:    # optional — without it, runs print and write a JSON report only
   url: https://api.evalstone.com
-  api_key_env: EVALSTONE_API_KEY
+  project: <project id from the center>
+  api_key_env: EVALSTONE_API_KEY   # an es_… ingest key minted on the project
 ```
 
 Model strings are `<provider>/<model>`. Providers: `openai` (any
