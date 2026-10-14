@@ -17,7 +17,7 @@ import { when } from "@/lib/format";
 import type { Invitation, Role } from "@/lib/types";
 
 /** Invite by email (member or admin — ownership is granted to members, never by invitation); pending ones can be revoked. */
-export function InvitationsCard({ organizationId, onJoined }: { organizationId: string; owner: boolean; onJoined: () => void }) {
+export function InvitationsCard({ organizationId, onJoined }: { organizationId: string; onJoined: () => void }) {
   const invitations = useLoader(() => api<Invitation[]>(`/organizations/${organizationId}/invitations`), [organizationId]);
   const { busy, act } = useAction();
   const [email, setEmail] = useState("");
@@ -25,11 +25,11 @@ export function InvitationsCard({ organizationId, onJoined }: { organizationId: 
 
   const invite = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = await act(`Invited ${email.trim()}`, () => api<Invitation>(`/organizations/${organizationId}/invitations`, { method: "POST", body: { email: email.trim(), role } }), () => {
+    const inv = await act(`Invited ${email.trim()}`, () => api<Invitation>(`/organizations/${organizationId}/invitations`, { method: "POST", body: { email: email.trim(), role } }), (created) => {
       invitations.reload();
-      onJoined(); // an existing user joins at once
+      if (created.status === "accepted") onJoined(); // an existing user joined at once; a stranger is only pending
     });
-    if (ok) setEmail("");
+    if (inv) setEmail("");
   };
   const revoke = (inv: Invitation) => act(`Invitation to ${inv.email} revoked`, () => api(`/organizations/${organizationId}/invitations/${inv.id}`, { method: "DELETE" }), invitations.reload);
   const pending = (invitations.data ?? []).filter((i) => i.status === "pending");

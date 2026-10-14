@@ -1,18 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { MintKeyForm } from "@/components/projects/MintKeyForm";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useLive } from "@/contexts/WebSocketContext";
-import { api, errorMessage } from "@/lib/api";
-import type { IngestKey, IngestKeyCreated, Page, Run } from "@/lib/types";
+import { api } from "@/lib/api";
+import type { IngestKey, Page, Run } from "@/lib/types";
 import { useLoader } from "@/hooks/useLoader";
 import { useLiveEvent } from "@/contexts/WebSocketContext";
 import { pct, when } from "@/lib/format";
@@ -30,20 +27,8 @@ export function ProjectOverview() {
     () => (canManageKeys ? api<IngestKey[]>(`/projects/${project!.id}/ingest-keys`) : Promise.resolve([] as IngestKey[])),
     [project?.id, canManageKeys],
   );
-  const [keyName, setKeyName] = useState("laptop");
-  const [minted, setMinted] = useState<IngestKeyCreated | null>(null);
   if (!organization || !project) return null;
 
-  const mint = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const k = await api<IngestKeyCreated>(`/projects/${project.id}/ingest-keys`, { method: "POST", body: { name: keyName } });
-      setMinted(k);
-      keys.reload();
-    } catch (err) {
-      toast.error(errorMessage(err));
-    }
-  };
 
   return (
     <div>
@@ -69,27 +54,7 @@ export function ProjectOverview() {
   url: ${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8181"}
   project: ${project.id}`}
             </pre>
-            {canManageKeys ? (
-            <form onSubmit={mint} className="flex items-end gap-2">
-              <div className="space-y-1">
-                <Label htmlFor="key-name">Ingest key name</Label>
-                <Input id="key-name" value={keyName} onChange={(e) => setKeyName(e.target.value)} className="w-56" />
-              </div>
-              <Button type="submit" variant="outline">
-                Create ingest key
-              </Button>
-            </form>
-            ) : (
-              <p className="text-sm text-muted-foreground">Ask an organization admin for an ingest key.</p>
-            )}
-            {minted && (
-              <div role="status" className="rounded-md border border-dashed p-3 text-sm">
-                <p className="font-medium">Copy it now — it is shown once.</p>
-                <code className="mt-1 block break-all text-xs" data-testid="minted-key">
-                  EVALSTONE_API_KEY={minted.key}
-                </code>
-              </div>
-            )}
+            {canManageKeys ? <MintKeyForm projectId={project.id} onMinted={() => keys.reload()} /> : <p className="text-sm text-muted-foreground">Ask an organization admin for an ingest key.</p>}
             {keys.data && keys.data.length > 0 && (
               <ul className="text-sm text-muted-foreground" aria-label="Ingest keys">
                 {keys.data.map((k) => (

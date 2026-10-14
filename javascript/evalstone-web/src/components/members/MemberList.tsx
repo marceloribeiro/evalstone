@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,11 +20,12 @@ import { when } from "@/lib/format";
 import { isAdmin, roleAtLeast } from "@/lib/roles";
 import type { Member, Role } from "@/lib/types";
 
-const ROLE_LABEL: Record<Role, string> = { member: "member", admin: "admin", owner: "owner" };
+const ROLES: Role[] = ["member", "admin", "owner"];
 
 /** Who is in the organization and what they may do; admins change roles and remove, owners alone grant or revoke ownership. */
 export function MemberList() {
-  const { organization } = useWorkspace();
+  const router = useRouter();
+  const { organization, reloadProjects } = useWorkspace();
   const { user } = useAuth();
   const members = useLoader(() => api<Member[]>(`/organizations/${organization!.id}/members`), [organization?.id]);
   const { busy, act } = useAction();
@@ -32,14 +34,18 @@ export function MemberList() {
   const admin = isAdmin(organization.role);
   const owner = roleAtLeast(organization.role, "owner");
   // an admin may move people between member and admin; only an owner touches ownership
-  const roleItems: Record<string, string> = owner ? ROLE_LABEL : { member: "member", admin: "admin" };
+  const roleItems: Record<string, string> = Object.fromEntries((owner ? ROLES : ROLES.slice(0, 2)).map((r) => [r, r]));
 
   const setRole = (m: Member, role: Role) =>
-    act(`${m.user.email} is now ${ROLE_LABEL[role]}`, () => api(`/organizations/${organization.id}/members/${m.id}`, { method: "PATCH", body: { role } }), members.reload);
+    act(`${m.user.email} is now ${role}`, () => api(`/organizations/${organization.id}/members/${m.id}`, { method: "PATCH", body: { role } }), () => {
+      members.reload();
+      if (m.user.id === user?.id) reloadProjects(); // my own role changed: the workspace re-reads it (what the page may do follows)
+    });
   const remove = (m: Member) =>
     act(`${m.user.email} removed`, () => api(`/organizations/${organization.id}/members/${m.id}`, { method: "DELETE" }), () => {
       setRemoving(null);
-      members.reload();
+      if (m.user.id === user?.id) router.replace("/organizations"); // I left: nothing here is mine to read any more
+      else members.reload();
     });
 
   return (
@@ -105,7 +111,7 @@ export function MemberList() {
             </TableBody>
           </Table>
         )}
-        {admin && <InvitationsCard organizationId={organization.id} owner={owner} onJoined={members.reload} />}
+        {admin && <InvitationsCard organizationId={organization.id} onJoined={members.reload} />}
       </div>
       <Dialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)}>
         <DialogContent>

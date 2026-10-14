@@ -16,7 +16,7 @@ export class SettingsPage {
   }
 
   async mintKey(name: string) {
-    await this.page.getByLabel("New key name").fill(name);
+    await this.page.getByLabel("Ingest key name").fill(name);
     await this.page.getByRole("button", { name: "Create ingest key" }).click();
     await expect(this.page.getByTestId("minted-key")).toContainText("EVALSTONE_API_KEY=es_");
     await expect(this.key(name)).toContainText("active");

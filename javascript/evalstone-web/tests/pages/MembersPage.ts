@@ -29,7 +29,7 @@ export class MembersPage {
   async setRole(email: string, role: "member" | "admin" | "owner") {
     await this.row(email).getByRole("combobox", { name: `Role of ${email}` }).click();
     await this.page.getByRole("option", { name: role, exact: true }).click();
-    await expect(this.row(email).getByRole("combobox", { name: `Role of ${email}` })).toContainText(role);
+    await expect(this.row(email)).toContainText(role); // a select for others, a badge once it is my own demoted row
   }
 
   /** Open the role select of a row, read the options it offers, close it again. */

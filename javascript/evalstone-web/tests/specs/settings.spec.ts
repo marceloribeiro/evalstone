@@ -59,6 +59,10 @@ test.describe("Members, invitations and project settings", () => {
     await expect(members.row(seed.email)).toContainText("owner");
     expect(await members.roleOptions(member.email)).toEqual(["member", "admin"]);
     await expect(page.getByRole("button", { name: "Invite" })).toBeVisible();
+    // demoting myself: the page's own permissions follow at once (no stale admin controls that would 403)
+    await members.setRole(admin.email, "member");
+    await expect(page.getByRole("button", { name: "Invite" })).toHaveCount(0);
+    await expect(page.getByRole("table", { name: "Members" }).getByRole("combobox")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.waitForURL(/\/login$/);
@@ -79,6 +83,7 @@ test.describe("Members, invitations and project settings", () => {
     const settings = new SettingsPage(page);
     await settings.goto(org.id, project.id);
     await settings.rename("new name");
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue("new name"); // no flash back to the old name
     await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("new name");
     await settings.mintKey("ci");
     await settings.revokeKey("ci");
