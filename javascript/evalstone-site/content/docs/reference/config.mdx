@@ -122,11 +122,13 @@ exit 2; attached, the proxy only rejects a bad name per call (see
 | `min_pass_rate` | fraction of results that must pass |
 | `min_mean_score` | mean 0..1 score across results |
 | `max_regression` | allowed drop in pass rate vs `--baseline` (warns when the dataset version differs) |
-| `require_baseline` | default **false**. With `max_regression`: fail when there is no baseline, it scored nothing, or it ran on a different dataset version or check set (default: skip or warn) |
+| `require_baseline` | default **false**. With `max_regression`: fail when there is no baseline, or it is from another suite, scored nothing, exceeded `max_error_rate`, or ran on a different dataset version or check set (default: skip or warn) |
 | `max_cost_usd` | total run cost |
 | `max_error_rate` | default **0**: a judge outage fails the gate |
 
 A run with zero results never passes.
+
+Unknown gate keys are a configuration error, so a misspelt threshold fails loudly.
 
 ## Model strings
 

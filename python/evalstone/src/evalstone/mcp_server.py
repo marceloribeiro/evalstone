@@ -217,7 +217,7 @@ def build_server(config_path: str | Path | None = None) -> Any:
                     "dataset": s.dataset,
                     "target": s.target.get("kind"),
                     "checks": s.checks,
-                    "gate": s.gate.model_dump(exclude_none=True) if s.gate else None,
+                    "gate": _gate_dump(s.gate) if s.gate else None,
                 }
                 for name, s in cfg.suites.items()
             },
@@ -331,3 +331,11 @@ def serve(config_path: str | Path | None = None) -> None:
 
 
 __all__ = ["MissingExtra", "Session", "build_server", "serve"]
+
+
+def _gate_dump(gate: Any) -> dict[str, Any]:
+    """The thresholds a suite's gate sets; ``require_baseline`` only when it is on."""
+    out = gate.model_dump(exclude_none=True)
+    if not out.get("require_baseline"):
+        out.pop("require_baseline", None)
+    return out

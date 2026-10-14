@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 if TYPE_CHECKING:
     from evalstone.run import Run
@@ -30,9 +31,13 @@ class Gate(BaseModel):
     ``max_regression`` compares against a baseline run (pass-rate drop allowed,
     as a fraction). Without a baseline the comparison is skipped, which suits a first
     run; ``require_baseline`` makes it mandatory instead, failing the gate when the
-    baseline is missing, scored nothing, or ran on a different dataset version or check
-    set. ``max_error_rate`` defaults to 0: a judge outage fails the gate.
+    baseline is missing, belongs to another suite, failed its own error threshold, or
+    ran on a different dataset version or check set. ``max_error_rate`` defaults to 0:
+    a judge outage fails the gate. Unknown keys are rejected, so a misspelt threshold
+    fails loudly instead of being ignored.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     min_pass_rate: float | None = Field(default=None, ge=0, le=1)
     min_mean_score: float | None = Field(default=None, ge=0, le=1)
@@ -89,43 +94,52 @@ class Gate(BaseModel):
                     rule(False, "regression: no baseline run (require_baseline)")
                 else:
                     lines.append("SKIP regression: no baseline run")
-            # Under require_baseline a mismatch is the failure: a drop across it means nothing.
-            elif not self.require_baseline or _comparable(run, baseline, rule):
-                if baseline.dataset_hash != run.dataset_hash:
-                    lines.append("WARN baseline ran on a different dataset version")
-                drop = baseline.summary.pass_rate - s.pass_rate
-                rule(
-                    drop <= self.max_regression,
-                    f"pass rate dropped {drop:.1%} vs baseline (max {self.max_regression:.1%})",
-                )
+            else:
+                if self.require_baseline:
+                    # Each mismatch is its own FAIL line; a drop across a mismatch means nothing.
+                    comparable = _comparable(run, baseline, self.max_error_rate, rule)
+                else:
+                    comparable = True
+                    if baseline.dataset_hash != run.dataset_hash:
+                        lines.append("WARN baseline ran on a different dataset version")
+                if comparable:
+                    drop = baseline.summary.pass_rate - s.pass_rate
+                    rule(
+                        drop <= self.max_regression,
+                        f"pass rate dropped {drop:.1%} vs baseline (max {self.max_regression:.1%})",
+                    )
         return GateReport(passed=not failures, checks=lines, failures=failures)
 
 
 __all__ = ["Gate", "GateFailed", "GateReport"]
 
 
-def _comparable(run: Run, baseline: Run, rule: Any) -> bool:
+def _comparable(
+    run: Run, baseline: Run, max_error_rate: float, rule: Callable[[bool, str], None]
+) -> bool:
     """Under ``require_baseline``: fail (via ``rule``) every reason the baseline's pass
     rate cannot stand in for this run's; True when there is none."""
-    ok = True
-    if baseline.summary.results == 0:
-        rule(False, "regression: baseline run scored no results (require_baseline)")
-        ok = False
+    reasons: list[str] = []
+    b = baseline.summary
+    if baseline.suite != run.suite:
+        reasons.append(f"baseline is suite {baseline.suite!r}, this run is {run.suite!r}")
+    if b.results == 0:
+        reasons.append("baseline run scored no results")
+    elif b.error_rate > max_error_rate:
+        # e.g. recorded during a judge outage: its near-zero pass rate would hide any drop
+        reasons.append(f"baseline error rate {b.error_rate:.1%} > {max_error_rate:.1%}")
     if baseline.dataset_hash != run.dataset_hash:
-        rule(
-            False,
-            f"regression: baseline ran on dataset {baseline.dataset_hash[:12]}, "
-            f"this run on {run.dataset_hash[:12]} (require_baseline)",
+        reasons.append(
+            f"baseline ran on dataset {baseline.dataset_hash[:12]}, "
+            f"this run on {run.dataset_hash[:12]}"
         )
-        ok = False
     if sorted(baseline.check_keys) != sorted(run.check_keys):
-        rule(
-            False,
-            f"regression: baseline checks {sorted(baseline.check_keys)} differ from "
-            f"{sorted(run.check_keys)} (require_baseline)",
+        reasons.append(
+            f"baseline checks {sorted(baseline.check_keys)} differ from {sorted(run.check_keys)}"
         )
-        ok = False
-    return ok
+    for reason in reasons:
+        rule(False, f"regression: {reason} (require_baseline)")
+    return not reasons
 
 
 def _unpriced_calls(run: Any) -> int:

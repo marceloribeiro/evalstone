@@ -17,7 +17,10 @@ report from `main`, say); a gate without `max_regression` ignores the baseline
 and prints no regression line. Without a baseline the regression check is
 skipped and the gate can still pass, which suits a first run; once `main` has a
 baseline report, add `require_baseline: true` to the gate so a missing or
-mismatched baseline fails the job instead. Works in any CI.
+mismatched baseline fails the job instead. A PR that edits the dataset or the
+check list then fails too, since nothing comparable exists yet: refresh the
+baseline (rerun the suite on the new definition and save that report) as part
+of that change. Works in any CI.
 
 ## The pytest plugin
 

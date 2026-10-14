@@ -144,6 +144,30 @@ def test_without_require_baseline_a_mismatch_only_warns():
     assert "WARN baseline ran on a different dataset version" in run.gate_lines
 
 
+def test_require_baseline_rejects_an_errored_or_foreign_suite_baseline():
+    suite = make_suite(Gate(max_regression=0.1, require_baseline=True))
+    # recorded during an outage: every result errored, pass rate 0 would hide any drop
+    outage = suite.run(RecordedTarget({}))
+    assert outage.summary.results > 0 and outage.summary.error_rate == 1.0
+    lines = suite.run(RecordedTarget({**GOOD, "b": "No idea."}), baseline=outage).gate_lines
+    assert "FAIL regression: baseline error rate 100.0% > 0.0% (require_baseline)" in lines
+    assert not any("pass rate dropped" in line for line in lines)
+
+    smoke = Suite(
+        "smoke", dataset=DS, checks=[es.checks.contains(), es.checks.length(max_words=10)]
+    )
+    lines = suite.run(RecordedTarget(GOOD), baseline=smoke.run(RecordedTarget(GOOD))).gate_lines
+    assert (
+        "FAIL regression: baseline is suite 'smoke', this run is 'support' (require_baseline)"
+        in lines
+    )
+
+
+def test_gate_rejects_unknown_keys():
+    with pytest.raises(ValueError, match="require_basline"):
+        Gate(max_regression=0.1, require_basline=True)
+
+
 def test_require_baseline_needs_max_regression():
     with pytest.raises(ValueError, match="require_baseline needs max_regression"):
         Gate(require_baseline=True)

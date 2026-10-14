@@ -87,6 +87,16 @@ def test_require_baseline_exits_1_without_the_baseline(in_dir):
     assert "PASS pass rate dropped 0.0%" in res.output
 
 
+def test_a_misspelt_gate_key_is_a_config_error(in_dir):
+    runner.invoke(app, ["init"])
+    cfg = Path("evalstone.yaml")
+    cfg.write_text(
+        cfg.read_text().replace("gate: {min_pass_rate: 0.9}", "gate: {min_pass_rte: 0.9}")
+    )
+    res = runner.invoke(app, ["gate", "nightly"])
+    assert res.exit_code == 2 and "min_pass_rte" in res.output
+
+
 def test_errors_are_reported_with_exit_2(in_dir):
     assert runner.invoke(app, ["run", "nightly"]).exit_code == 2  # no config
     runner.invoke(app, ["init"])
