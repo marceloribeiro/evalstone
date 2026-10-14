@@ -86,7 +86,7 @@ def pairwise(
             return Score.errored("pairwise: no providers configured")
         unpriced.clear()
         try:
-            resolved = "/".join(ctx.providers.split(ctx.judge_model or model))
+            resolved = "/".join(ctx.providers.split(judge_model_for(ctx, key, model)))
         except ProviderError as exc:
             return Score.errored(str(exc))
         version = sha256({**identity, "model": resolved})[:16]

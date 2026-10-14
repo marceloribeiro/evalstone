@@ -44,9 +44,10 @@ Do **not** block on:
 An LLM feature run twice gives slightly different scores. A gate with a
 tolerance of zero fails randomly and teaches everyone to re-run until green.
 Measure your noise floor: run the same code three times, look at the
-spread, and set the tolerance above it. Judges at temperature 0 with a
-cache remove the judge's share of the noise; the feature's own
-non-determinism remains.
+spread, and set the tolerance above it. A cached judge removes the judge's
+share of the noise on unchanged outputs (temperature 0 helps where the
+provider accepts it; Evalstone leaves it at the provider default); the
+feature's own non-determinism remains.
 
 ## The baseline
 

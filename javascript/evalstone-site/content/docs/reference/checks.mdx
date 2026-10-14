@@ -12,11 +12,11 @@ In Python the same factories live under `evalstone.checks`; in YAML the
 
 | Type | Reads | Passes when |
 | --- | --- | --- |
-| `exact` | `expected` (or `path:` into it), `case_sensitive`, `strip` | output equals the reference (text or JSON equality) |
+| `exact` | `expected:` literal, else the sample's `expected` (or `path:` into it); `case_sensitive`, `strip` | output equals the reference (text or JSON equality) |
 | `contains` | `expected.must_include` (or `path:` / `needles:`), `require_all`, `case_sensitive` | every (or any) needle appears; value = fraction found |
-| `regex` | `pattern`, `flags`, `must_match` | the pattern matches (or does not) |
+| `regex` | `pattern`, `flags` (an int: `re` flag bits, e.g. `2` for `IGNORECASE`), `must_match` | the pattern matches (or does not) |
 | `json_schema` | `schema` (JSON Schema dict — draft from `$schema` — or a pydantic model) | the output is valid JSON and conforms; malformed schemas fail at load |
-| `numeric_tolerance` | `expected` (or `path:`), `output_path`, `abs_tol`, `rel_tol` | the output number is within tolerance |
+| `numeric_tolerance` | `expected:` literal, else the sample's `expected` (or `path:`); `output_path`, `abs_tol`, `rel_tol` | the output number is within tolerance |
 | `length` | `max_chars`, `max_words`, `min_chars` | within limits |
 | `python` | (Python only) any `fn(sample, output[, ctx])` | whatever it returns (`Score`, `bool`, or 0..1) |
 
@@ -26,7 +26,7 @@ A missing or null reference is an **error**.
 
 | Type | Reads | Notes |
 | --- | --- | --- |
-| `judge` | `rubric`, `scale` (default 5), `pass_level` (default: second-highest level; the top level on a 1–2 scale) or `threshold` (0..1), `model`, `include_reference` (default false), `max_tokens` | value = (level−1)/(scale−1); verdicts cached by judge version + prompt, so unchanged outputs cost nothing on re-runs |
+| `judge` | `rubric`, `scale` (default 5), `pass_level` (default: second-highest level; the top level on a 1–2 scale) or `threshold` (0..1), `model`, `include_reference` (default false), `max_tokens` | value = (level−1)/(scale−1); verdicts cached by judge version + prompt — within one process standalone, across runs and machines when the project is [attached to a center](/docs/reference/config#center) — so unchanged outputs cost nothing again |
 
 ## RAG (judge-backed; the sample input carries `question` and `context`)
 
@@ -44,7 +44,7 @@ take only the keys listed — not the judge's `scale`, `pass_level` or
 
 | Type | Reads | Passes when |
 | --- | --- | --- |
-| `safety.refusal` | `expected.should_refuse` (or `expected:` literal) | the output refuses exactly when it should |
+| `safety.refusal` | `expected:` literal (bool), else the sample's `expected[path]` with `path` default `should_refuse`; neither set = must not refuse | the output refuses exactly when it should |
 | `safety.no_pii` | `kinds` ⊆ email, phone, card (Luhn-valid), ssn, ipv4 | none found |
 | `safety.forbidden` | `phrases`, `case_sensitive` | none of the phrases appear |
 
@@ -54,11 +54,14 @@ Heuristics, not a DLP engine; keep safety checks in their own suite.
 
 | Type | Reads | Value |
 | --- | --- | --- |
-| `comparison.pairwise` | `rubric`, `baseline` (a target spec or `{sample_id: output}`), `model`, `both_orders` (default true) | mean over judged orders of 1 (candidate preferred) / 0.5 (tie) / 0; passes at 0.5 |
+| `comparison.pairwise` | `rubric`, `baseline` (a target spec or `{sample_id: output}`), `model`, `both_orders` (default true), `max_tokens` (default 256) | mean over judged orders of 1 (candidate preferred) / 0.5 (tie) / 0; passes at 0.5 |
 
 Both orders are judged by default to cancel position bias.
 
 ## Agent trajectory (deterministic; `output.value["steps"]` = `[{"tool", "args"}, …]`)
+
+Every step-reading check takes `steps:` (default `"steps"`), the key under
+`output.value` (or `output.metadata`) holding the trajectory.
 
 | Type | Reads | Passes when |
 | --- | --- | --- |
@@ -78,7 +81,13 @@ unless `min_times: 0`).
 
 | Type | Reads | Passes when |
 | --- | --- | --- |
-| `human` | `labels` (JSONL from `evalstone label`), `check` | a label exists for this sample **and** this exact output, and it passed |
+| `human` | `labels` (a JSONL path from `evalstone label`, or `center`), `check` | a label exists for this sample **and** this exact output, and it passed |
+
+`labels: center` looks the label up in the center at run time; it is the default
+for an [attached project](/docs/reference/config#center) (unattached, the
+default is `labels.jsonl` next to the config). A center hiccup or `labels: center`
+in an unattached run is an **error** score, never a pass, so it counts
+toward `max_error_rate`.
 
 ## Your own
 

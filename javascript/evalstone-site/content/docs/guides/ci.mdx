@@ -41,6 +41,12 @@ rather than passing by default. Patches you make in a test (`monkeypatch` on
 your bot module) reach the suite: the run reuses the modules already imported.
 No `evalstone.yaml` → the test is skipped, not errored.
 
+When the project is attached to a center, the plugin judges through the
+center's proxy and cache like the CLI does, but it **never pushes** the run:
+the per-suite report on disk is its output. Runs it makes carry
+`trigger: "ci"`; `evalstone run` (and so the GitHub Action) records
+`trigger: "cli"`, the MCP server `"mcp"`, so a center can tell them apart.
+
 ## The GitHub Action
 
 ```yaml
@@ -54,7 +60,8 @@ steps:
       working-directory: evals          # where evalstone.yaml lives
       install: "evalstone[anthropic]"   # a pip spec: extras, a pin, a git URL or a path
     env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # standalone judges
+      # EVALSTONE_API_KEY: ${{ secrets.EVALSTONE_API_KEY }} # attached: the ingest key instead
 ```
 
 The action installs evalstone (`install:` is a pip spec: the published name
@@ -63,10 +70,35 @@ writes the report into the job summary, posts a PR comment (updated in place on
 every push) with the verdict, the per-check table and the failing samples, and
 fails the check when the gate does not pass. The comment needs a token that can
 write to the pull request: on pull requests from forks the token is read-only,
-so the comment is skipped and the job summary is the report. Every input,
-output and default:
+so the comment is skipped and the job summary is the report. The comment is
+`evalstone show <report> --markdown`, so you can see it locally.
+
+The step runs `evalstone run`, so an attached project (a `center:` block in
+its YAML) **pushes every Action run** to the center; put the project's ingest
+key in `env:` as `EVALSTONE_API_KEY` and drop the provider key — the center's
+judge settings pick the model. Without the key the run is still judged, the
+push fails, and the step only warns (exit code unchanged). There is no
+`judge-model` input: the model is the YAML's, or the center's.
+
+| Input | Default | What |
+| --- | --- | --- |
+| `suite` | — (required) | suite name from `evalstone.yaml` |
+| `working-directory` | `.` | directory holding `evalstone.yaml` |
+| `config` | `evalstone.yaml` | config path, relative to `working-directory` |
+| `install` | `evalstone` | pip spec: extras, a pin, a git URL or a path |
+| `python-version` | `3.12` | passed to `actions/setup-python` |
+| `baseline` | `""` | a saved report to gate `max_regression` against |
+| `report` | `""` | where to write the report; empty = the runner's temp dir |
+| `failures` | `10` | failing results shown (`0`: none) |
+| `comment` | `true` | post/update the PR comment |
+| `comment-id` | `""` | distinguishes comments when one suite runs in several jobs |
+| `github-token` | `github.token` | token for the comment |
+| `fail-on-gate` | `true` | fail the step when the gate does not pass |
+
+Outputs: `report` (the absolute report path, usable as a later run's
+`baseline`) and `passed` (`true`, `false`, or `none` when the suite has no
+gate). The same table with examples:
 [action/README.md](https://github.com/marceloribeiro/evalstone/blob/main/action/README.md).
-The comment is `evalstone show <report> --markdown`, so you can see it locally.
 
 The Evalstone repository runs this action on its own pull requests against the
 `rag-bot` sample.

@@ -23,11 +23,11 @@ claude mcp add evalstone -- evalstone mcp
 | Tool | What it does |
 | --- | --- |
 | `list_suites` | Suites and datasets from `evalstone.yaml` |
-| `run_suite` | Run a suite against its target; returns the summary and the failed samples |
+| `run_suite` | Run a suite against its target (`trigger=mcp`); returns the summary and the failed samples, writes the JSON report. Attached, judges use the center's proxy and cache; the run is not pushed |
 | `compare_runs` | Sample-by-sample diff of two runs |
-| `judge_output` | Score one (input, output) with a named judge check |
+| `judge_output` | Score one (input, output) with any check configured in `evalstone.yaml` — a judge, or any other type |
 | `record_sample` | Append a sample to a dataset (for harvesting from a conversation) |
-| `get_run` | Fetch a run's results from the center |
+| `get_run` | Read a saved JSON report (a path under the project root): summary, per-check rates, gate, failures |
 
 A typical agent loop: edit the prompt → `run_suite("nightly")` → read the
 eight failures → edit again → `run_suite` → `compare_runs` → report the diff

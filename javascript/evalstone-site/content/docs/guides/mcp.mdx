@@ -35,6 +35,16 @@ holding `evalstone.yaml`, wherever the server was started from (`evalstone mcp
 --config path/to/evalstone.yaml` serves a project from elsewhere). Calls run one
 at a time, and anything a check prints goes to stderr, never onto the wire.
 
+## Attached to a center
+
+When the YAML has a `center:` block the server behaves like the CLI: judges go
+through the center's model proxy with the project's judge settings, verdicts
+come from and go to the center's shared cache, `human` checks look labels up
+there, and `EVALSTONE_API_KEY` must be in the environment the client starts the
+server with. Prompt targets (the thing under test) still use the local
+`providers:` registry. `run_suite` **never pushes** a run to the center: the
+report it writes is the record, and runs it makes carry `trigger: "mcp"`.
+
 ## A typical loop
 
 1. `list_suites` — what exists.

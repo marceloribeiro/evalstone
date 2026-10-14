@@ -1,0 +1,158 @@
+---
+title: The center, page by page
+description: What each page of app.evalstone.com does, which API call sits behind it, and the labeler's keyboard.
+---
+
+The web app is a thin client over the [center API](/docs/reference/center-api):
+every button below is one request you could also make with `curl`. To look
+around before attaching your own project, sign in with the visitor account on
+the [Center page](/docs/evalstone/center) — `visitor@evalstone.com` /
+`evalstone-demo-2026`, a **member** of the demo organization, so it can grade
+and compare but not change settings or delete.
+
+## Sign in, register
+
+`/login` and `/register` (`POST /auth/login`, `POST /auth/register`: email,
+password, first and last name). A new account owns nothing yet: create an
+organization on `/organizations`, or register with the address an admin
+invited — the invitation is accepted the moment that address registers (an
+existing user is added on the spot).
+
+## Organization and project
+
+The sidebar switches organizations and projects. Organization pages:
+**Projects**, **Check catalog**, **Providers**, **Members**. Project pages:
+**Overview**, **Runs**, **Datasets**, **Labeling**, **Judges**, **Monitors**,
+**Alerts**, **Settings**.
+
+### Overview
+
+The attach snippet for this project — the `center:` block with the center's
+URL and the project id — plus **mint an ingest key** (admins; the `es_…`
+secret is shown once), the list of keys with their last use, the live feed and
+the latest runs. [What attaching changes](/docs/evalstone/center).
+
+## Runs
+
+Every pushed run: suite, trigger (`cli`, `ci`, `mcp`), git SHA, pass rate,
+cost, gate verdict. A run page has the per-check table, every result with its
+reason, and a **Compare** tab against another run (regressions, improvements,
+metric deltas — `GET /projects/{id}/runs/{a}/compare/{b}`).
+
+**Set as baseline** marks the run as the reference for its suite — one
+baseline per suite, shown as a badge in the list and what the center's compare
+starts from (`PUT /projects/{id}/runs/{run_id}/baseline` with
+`{"is_baseline": true}`; `false` unsets it). Members and above. The library's
+`--baseline` is still a local report: download one with
+`GET /projects/{id}/runs/{run_id}/report` to gate against the center's
+baseline in CI.
+
+## Datasets
+
+Named, tagged collections of samples. Samples arrive as a version
+(`POST /projects/{id}/datasets/{dataset_id}/versions`); every post that changes
+the content becomes the next version, so a dataset page lists versions, the
+samples of one version, and a diff between two. A pushed run links to the
+dataset version whose content hash matches the run's `dataset_hash`, which is
+how a run page knows which golden set it ran on (the library does not push
+datasets itself).
+
+## Labeling
+
+Admins create a **queue** from a run (*grade* its outputs on a 2–10 scale),
+from two runs (*compare*, A/B/tie per sample) or from a dataset version
+(*verify* each expected value), with instructions and the label key the grades
+are recorded under. A queue page shows progress, assignment (admins assign
+members; anyone assigned can grade), open/close, and the task list.
+
+### The labeler
+
+**Label** claims the next task (`POST …/label-queues/{id}/next`, one at a time
+per grader) and takes the verdict from the keyboard. Shortcuts work when
+nothing interactive has focus; they are ignored while you type in the notes
+box.
+
+| Key | Grade queue | Compare queue | Verify queue |
+| --- | --- | --- | --- |
+| `1`–`9` | grade 1–9 (up to the queue's scale) | — | — |
+| `0` | grade 10 | — | — |
+| `P` / `F` | pass / fail (a 2-point scale) | — | expected is correct / wrong |
+| `A` / `B` / `T` | — | A is better / B is better / tie | — |
+| `N` | focus the notes box | same | same |
+| `Esc` | leave the notes box | same | same |
+| `Enter` | submit the verdict (`⌘`/`Ctrl`+`Enter` from inside the notes box) | same | same |
+| `S` then `S` | skip — a skip is final, so it takes two presses within a few seconds; any other key disarms | same | same |
+
+Grades land as labels keyed by (sample, output hash, check), the same records
+the [labeling guide](/docs/guides/labeling) exports and the `human` check
+reads. When the queue is empty the page says so.
+
+## Judges
+
+Three cards.
+
+- **Judge settings** — `default_model` and per-check `overrides`, each a
+  `provider/model` over the organization's providers; what an attached library
+  and the center's own judges read (`PUT /projects/{id}/judge-settings`). The
+  precedence from the library's side is in the
+  [config reference](/docs/reference/config).
+- **Judges seen** — every (check, judge version) that has appeared in this
+  project's runs, with its model and counts.
+- **Calibrations** — pick a check (and a judge version; the default is the
+  latest finished run's), click **Calibrate**: a Celery job joins the judge's
+  latest non-errored verdict per (sample, output) with the human labels of the
+  same key and reports *n*, agreement, Cohen's kappa, a pass/fail confusion
+  matrix and the mean absolute error of the 0–1 values
+  (`POST /projects/{id}/calibrations` with `check_key`, optional
+  `judge_version`, `label_check`; poll the row until `status` is `done` or
+  `failed`). **Promote** writes the calibrated model into the project's
+  overrides for that check — the next attached run judges with it. Members
+  and above request calibrations; the provider behind the model must be one of
+  the organization's, or Promote is refused.
+
+## Providers
+
+Organization-level model providers — adapters `anthropic`, `openai` (any
+OpenAI-compatible base URL) and `gemini`: name, adapter, the key — stored
+encrypted, never shown again — and **Test**, which makes one small call.
+Admins only.
+[How the center uses them](/docs/evalstone/how-it-works#how-a-judge-reaches-a-provider).
+
+## Monitors and alerts
+
+A **monitor** scores a sample of production traces against org-catalog checks
+every minute: name, `check_keys` (up to 20), `sample_rate` (0–1, default 0.1),
+an alert policy — `metric` (`pass_rate` or `mean_score`) below `threshold`
+over `window_minutes` with at least `min_n` scored traces — and an optional
+`webhook_url`. A monitor page shows the window the policy sees right now, its
+alerts and the recent traces; admins pause/resume, **score now**, delete.
+
+Traces arrive with the project's ingest key (`POST /projects/{id}/traces`,
+batches of `{id, input, output, metadata, tags, model, latency_ms, cost_usd,
+occurred_at}`; retries dedupe on `id`). **Alerts** lists breaches, open first,
+live over the WebSocket; one alert per breach, resolved on recovery, each
+POSTed to the webhook. A member can **flag** a trace as worth harvesting into
+a dataset — a judgement call recorded on the trace. Payloads:
+[center API](/docs/reference/center-api).
+
+## Check catalog
+
+The organization's named checks — a type from the library (`judge`, `exact`,
+`json_schema`, …) plus its params — with versions and notes; monitors name them
+by key, and labeling and calibration record under them. The page renders the
+whole catalog as the `checks:` block of an `evalstone.yaml` (`GET
+/organizations/{id}/checks/yaml`): copy it into a project so the suite and the
+monitors run the same definitions. Admins edit; a change of type or params
+creates the next version.
+
+## Members
+
+Who is in the organization and their role — `member` (grade, run, compare),
+`admin` (settings, catalog, providers, queues, keys), `owner` (also ownership).
+Admins invite by email with a role and revoke pending invitations; owners
+alone grant or revoke ownership.
+
+## Project settings
+
+Name, slug, description; the ingest keys (mint, revoke — a revoked key is
+refused at once); deleting the project. Admins only; members read.

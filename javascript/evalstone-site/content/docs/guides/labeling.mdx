@@ -4,8 +4,10 @@ description: Grade a run's outputs by hand; use the labels as a check and, later
 ---
 
 Human labels are the ground truth ([chapter 5](/docs/learn/building-a-golden-set),
-[chapter 6](/docs/learn/llm-as-judge)). Evalstone keeps them in a JSONL file
-you can version next to the dataset.
+[chapter 6](/docs/learn/llm-as-judge)). Standalone, Evalstone keeps them in a
+JSONL file you can version next to the dataset; attached to a center, the
+`human` check reads them from the center and the center's labeling queues
+produce them.
 
 ## Grade a run
 
@@ -23,7 +25,9 @@ Outputs whose target errored are not offered: there is nothing to grade. The
 text is shown verbatim, whatever brackets or markup it contains.
 
 A label is keyed by the sample id **and a hash of the output**, so when the
-answer changes the old grade does not apply.
+answer changes the old grade does not apply. `evalstone label` always writes
+the local file (`--out`, default `labels.jsonl`), attached or not; see below
+for getting a file into the center.
 
 ## Use labels as a check
 
@@ -36,8 +40,43 @@ A labelled output scores from its label; an unlabelled one is an **error**,
 never a pass. Keep `human` checks in their own suite for the slice that
 warrants it; they are the most expensive check there is.
 
-## What comes next
+### `labels: center`
 
-The [center](/docs/evalstone/center) turns this into a queue with assignees, and runs judge
-calibration: the same samples graded by people and by a judge, agreement and
-kappa reported, the judge promoted when it clears your bar.
+In an attached project `labels:` defaults to `center` (write it out, or leave
+it off): each (sample, output hash[, check]) is looked up in the center at run
+time, with `--check`-style per-rubric labels selected by the check's `check:`
+key. A missing label is the same error as above; a center that cannot be
+reached is an error score too, never a pass; and `labels: center` in a project
+with no `center:` block errors every result, so the gate fails loudly rather
+than quietly. A file path still works when attached — a frozen export, say.
+
+## Labels in and out of the center
+
+The center's own labels come from [labeling queues](/docs/guides/center-tour#labeling)
+graded in the browser. A local `labels.jsonl` goes in with one request, and
+comes back out as the same format:
+
+```bash
+# import: upsert; later wins per (sample, output, check)
+python3 -c 'import json,sys; print(json.dumps({"labels":[json.loads(l) for l in open("evals/labels.jsonl")]}))' \
+  | curl -s -X POST "$API/projects/$PROJECT/labels" -H "Authorization: Bearer $EVALSTONE_API_KEY" \
+         -H 'content-type: application/json' -d @-          # → {"upserted": 12}
+
+# export: every live label as NDJSON — a drop-in labels.jsonl for the human check
+curl -s "$API/projects/$PROJECT/labels/export" -H "Authorization: Bearer $EVALSTONE_API_KEY" > evals/labels.jsonl
+```
+
+Both accept the project's `es_…` ingest key or a signed-in member. The lines
+are the library's `Label` records (`sample_id`, `output_hash`, `value`,
+`passed`, `notes`, `check`, `labeler`, `created_at`, `raw`); a push is capped
+per request, so split a very large file. Endpoint details:
+[center API](/docs/reference/center-api).
+
+## Calibrate a judge against the labels
+
+Once the same outputs carry a human label and a judge verdict, the center's
+Judges page computes agreement, Cohen's kappa, a pass/fail confusion matrix and
+the mean absolute error for that judge version, and **Promote** makes the
+calibrated model the project's override for that check. How to run it, and the
+labeler's keyboard shortcuts:
+[the center, page by page](/docs/guides/center-tour#judges).

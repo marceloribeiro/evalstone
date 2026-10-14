@@ -5,7 +5,8 @@ description: From nothing to a gated eval run in ten minutes, no model key requi
 
 <Callout type="info" title="Install">
   `pip install "evalstone[anthropic]"` — Python 3.12+. The `[anthropic]` extra
-  is what step 5's judge needs; everything before it runs with no model.
+  is what step 5's judge needs when you run standalone; everything before it
+  runs with no model, and an attached project (step 6) needs no extra at all.
 </Callout>
 
 ## 1. Scaffold a project
@@ -75,8 +76,33 @@ checks:
       the concrete rule (numbers, time windows, conditions).
     scale: 5
 judges:
-  default_model: anthropic/claude-haiku-5-5     # needs ANTHROPIC_API_KEY
+  default_model: anthropic/claude-haiku-5-5     # standalone: needs ANTHROPIC_API_KEY
 ```
 
-Without a key, or without the `[anthropic]` extra installed, a judge is an
-**error, never a pass**, and the gate fails on error rate. That is deliberate.
+Standalone, without a key or without the `[anthropic]` extra installed, a
+judge is an **error, never a pass**, and the gate fails on error rate. That is
+deliberate.
+
+## 6. Attach a center
+
+The same suite, with its runs kept and its judges paid for by the
+organization's key instead of one on your laptop: add a `center:` block and an
+ingest key.
+
+```yaml
+center:
+  url: https://api.evalstone.com        # or your own
+  project: <project id>                 # from the project's Overview page
+```
+
+```bash
+EVALSTONE_API_KEY=es_…  evalstone run nightly
+# … center → run <id> stored (https://api.evalstone.com)
+```
+
+Attached, `judges:` and `providers:` in the YAML are not read: the model comes
+from the project's judge settings in the center, the verdict cache is shared
+across machines, and every `evalstone run` pushes its report. The
+[center page](/docs/evalstone/center) explains what moves where; the seven
+`center:` keys are in the [config reference](/docs/reference/config);
+the web app is toured in [the center, page by page](/docs/guides/center-tour).

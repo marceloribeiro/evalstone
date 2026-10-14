@@ -73,8 +73,9 @@ them, add them, bump the dataset version. The loop gets smarter.
 - **Cheap checks first.** Rules and schema checks cost nothing; run them
   before any model-based judge, and let a hard failure skip the expensive
   checks.
-- **Cache judge calls.** The same (judge, input, output) triple always
-  produces the same verdict at temperature 0; never pay for it twice.
+- **Cache judge calls.** Key the cache on the (judge, input, output) triple
+  and never pay for the same verdict twice — a cache makes re-runs free
+  whatever the temperature.
 - **Small dataset for the inner loop, full dataset for the gate.** 30 samples
   while you iterate, 300 before you merge.
 

@@ -17,7 +17,7 @@ checks:                              # keyed definitions: {type: <check type>, .
   short: { type: length, max_words: 120 }
   helpful: { type: judge, rubric: "...", scale: 5 }
   faithful: { type: rag.faithfulness }
-  reviewed: { type: human, labels: evals/labels.jsonl }
+  reviewed: { type: human, labels: evals/labels.jsonl }   # or labels: center (the default when attached)
 
 suites:
   nightly:
@@ -39,6 +39,11 @@ providers:
 
 prices:                              # USD per 1M tokens (input, output); overrides the built-in table
   my-model: [1.0, 2.0]
+
+center:                              # optional: attach the project to an Evalstone center
+  url: https://api.evalstone.com
+  project: 035d2060-80b1-4a90-9685-29a793df0f65
+  api_key_env: EVALSTONE_API_KEY     # an es_… ingest key from the project's settings
 ```
 
 `providers.<name>` takes `adapter` (`openai`, `anthropic` or `gemini`; defaults
@@ -56,8 +61,49 @@ Groq are a `base_url` away. Keys come from the environment variable named by
 `api_key_env` (or the provider's default one); `api_key` sets one inline, which
 is for programmatic use — a key in a committed YAML is a committed key. Only
 models in the built-in price table (Claude models today) or under `prices:`
-count toward `max_cost_usd`; others are reported unpriced. The full picture:
+count toward `max_cost_usd`; others are reported unpriced, and a gate with
+`max_cost_usd` prints a `WARN … unpriced model counted as $0` line next to its
+verdict rather than guessing a price. The full picture:
 [How it works](/docs/evalstone/how-it-works).
+
+## Center
+
+`center:` attaches the project to an Evalstone center (ours at
+`https://api.evalstone.com`, or a self-hosted one). Attached, judges run through
+the center's model proxy with the organization's keys, verdicts are cached
+there, `human` checks look labels up there and `evalstone run` pushes its
+report. Standalone (no block) nothing leaves the machine.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `url` | required | the center's API base URL |
+| `project` | required | the project id (uuid): the `p/<id>` segment of the project's URL in the web app |
+| `api_key_env` | `EVALSTONE_API_KEY` | the environment variable holding an `es_…` ingest key (minted on the project's Settings page by an admin; a user token works too); a missing value is exit 2 |
+| `timeout` | `120` | seconds a judge call may wait on the provider behind the proxy |
+| `cache_timeout` | `10` | seconds for cache and label lookups; a slow center is a cache miss, never a failed run |
+| `push_runs` | `true` | `evalstone run` / `gate` push the report; a failed push warns, never fails |
+| `cache` | `true` | read and write judge verdicts in the center; `false` keeps an in-process cache |
+
+**What changes when attached.** Judges ignore `judges:` and `providers:`: the
+model comes from the project's judge settings in the center, and no provider
+key is needed on the machine running the suite. The system under test does
+not: a `prompt` target still uses the local `providers:` entry and its
+environment key, and `callable`/`http` targets are untouched. `human` checks
+default to `labels: center` (write `labels: center` explicitly to say so;
+unattached the default is `labels.jsonl` next to the config, and a file path
+still works attached). The pytest plugin and the MCP server use the center's
+judges and cache but never push runs.
+
+**Which model a judge uses**, first match wins:
+
+1. `evalstone run --judge-model <provider>/<model>` (the whole run)
+2. the center project's per-check override (Judges page, keyed by the check's key)
+3. the check's own `model:`
+4. the center project's default judge model when attached, else `judges.default_model`
+
+Standalone, step 2 does not exist and an unknown provider in `--judge-model` is
+exit 2; attached, the proxy only rejects a bad name per call (see
+[CLI](/docs/reference/cli#when-the-project-is-attached-to-a-center)).
 
 ## Targets
 

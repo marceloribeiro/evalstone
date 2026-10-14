@@ -16,9 +16,12 @@ calibrated against. **Deterministic checks** guard the contracts (schema,
 facts, length, safety, tool calls) exactly and for free, and run before the
 judges in every suite.
 
-Evalstone itself has no account, no proxy and no relay: when a check needs a
-model, the library calls the provider you configured, directly from the
-machine running the suite, with a key from your environment.
+Standalone, Evalstone has no account, no proxy and no relay: when a check
+needs a model, the library calls the provider you configured, directly from
+the machine running the suite, with a key from your environment. Attached to a
+[center](/docs/evalstone/center), judge calls go through the center's model
+proxy instead, with the organization's key held server-side; the prompt target
+(the system under test) still runs locally on your `providers:`.
 
 ## The judge: where quality is measured
 
@@ -35,10 +38,11 @@ asked, judge both orders in a pairwise comparison, and treat a refusal, a
 network error or malformed JSON as an **error, never a pass**. Human labels
 (`evalstone label`, the `human` check) are what a judge gets measured
 against: agreement between the two is the number that says whether the judge
-can be trusted on your data. Today you get that number by running the `human`
-check and the judge on the same suite and reading the two columns; the
-agreement report itself (kappa, confusion, per-rubric drift) is
-[center](/docs/evalstone/center) work. Chapter 6 of Evals 101,
+can be trusted on your data. Standalone you get that number by running the
+`human` check and the judge on the same suite and reading the two columns; the
+agreement report itself (exact agreement, Cohen's kappa, a confusion matrix)
+is in the [center](/docs/evalstone/center), on the Judges page, where a
+calibrated judge can be promoted to the check's model. Chapter 6 of Evals 101,
 [LLM-as-judge](/docs/learn/llm-as-judge), is the background.
 
 ## How a judge reaches a provider
@@ -107,6 +111,28 @@ Rules that hold for every adapter:
 - **Thresholds live outside the cache.** A judge caches the model's raw level
   and reason; `pass_level` / `threshold` are applied on read, so changing the
   bar within a process does not re-spend.
+
+### Attached to a center
+
+With a `center:` block the judges' registry is the center's model proxy: the
+library sends the judge prompt to `POST /model/complete` with an ingest key,
+the center resolves the provider from the organization's saved keys and dials
+it. `providers:` and `judges:` in the YAML are then ignored for judges (they
+still serve a `prompt` target). The model a judge uses is decided in this
+order, first match wins:
+
+1. `--judge-model provider/model` on the command line (the whole run);
+2. the project's per-check override, set on the center's Judges page
+   (what *Promote* writes);
+3. the check's own `model:`;
+4. the project's default model in the center's judge settings.
+
+Verdicts are read from and written to the center's judge cache under the
+resolved model, so one verdict serves every machine and a changed override
+re-judges. Standalone, step 2 does not exist and step 4 is `judges.default_model`.
+One caveat: attached, `--judge-model` is not validated before the run — a
+typo'd provider is rejected by the center at the first judge call and surfaces
+as an errored score, which the error-rate gate still catches.
 
 ## The guardrails: what runs with no model at all
 

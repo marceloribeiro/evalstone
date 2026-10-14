@@ -95,7 +95,8 @@ class ScoreCache(Protocol):
 
 
 class MemoryCache:
-    """An in-process ``ScoreCache``. The center-backed cache arrives with Phase 3."""
+    """An in-process ``ScoreCache`` (the standalone default; attached projects use
+    ``evalstone.center.CenterCache``)."""
 
     def __init__(self) -> None:
         self._data: dict[str, Score] = {}

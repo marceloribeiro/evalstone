@@ -310,6 +310,27 @@ def test_pairwise_honours_the_center_override(cfg):
     )
     check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx)
     assert json.loads(calls.calls[0].request.content)["model"] == "other/big"
+    # The check version (and so the cache key) is built from the same resolved model:
+    # a cache keyed on the override must be hit by a second evaluation, and must NOT be
+    # hit once the override changes.
+    from evalstone.score import MemoryCache
+
+    cache = MemoryCache()
+    ctx_cached = Context(providers=ctx.providers, extra=ctx.extra, cache=cache)
+    check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx_cached)
+    filled = calls.call_count  # both orders were asked once
+    check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx_cached)
+    assert calls.call_count == filled  # served from the cache
+    key_before = next(iter(cache._data))
+    ctx_other = Context(
+        providers=ctx.providers,
+        extra={**ctx.extra, "judge_models": {"better": "other/small"}},
+        cache=cache,
+    )
+    check.evaluate(Sample(id="s", input="q"), Output(value="candidate"), ctx_other)
+    assert calls.call_count > filled  # a changed override is a different version → miss
+    assert json.loads(calls.calls[-1].request.content)["model"] == "other/small"
+    assert set(cache._data) != {key_before}
 
 
 @respx.mock

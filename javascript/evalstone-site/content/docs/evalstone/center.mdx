@@ -33,6 +33,24 @@ proxy with the organization's provider keys (no key on the machine), verdicts ar
 in the center, and `human` checks look labels up there. Prompt targets — the system under
 test — still use your local `providers:`.
 
+Every key the block accepts (`url` and `project` are required):
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `url` | — | the center's API base, e.g. `https://api.evalstone.com` |
+| `project` | — | the project id (a UUID, shown on the project's home page) |
+| `api_key_env` | `EVALSTONE_API_KEY` | the environment variable holding an `es_…` ingest key (or a user token) |
+| `timeout` | `120` | seconds a judge call may wait on the provider behind the proxy |
+| `cache_timeout` | `10` | seconds for cache and label lookups; a slow center is a cache miss, never a failed run |
+| `push_runs` | `true` | `evalstone run` pushes its report (`false` keeps the run local) |
+| `cache` | `true` | read and write judge verdicts in the center (`false` keeps an in-process cache) |
+
+Which runs reach the center: `evalstone run` pushes (unless `push_runs: false`), and a
+failed push warns without changing the exit code. The pytest plugin and the MCP server's
+`run_suite` never push — they write the local JSON report only; the judges and the cache
+still go through the center. Pull the same keys into context on the
+[config reference](/docs/reference/config).
+
 ## What the web app shows
 
 - **Project home** — the attach snippet, ingest keys, a live feed of events, the latest runs.
@@ -41,7 +59,7 @@ test — still use your local `providers:`.
 - **Datasets** — immutable content-hashed versions, a sample viewer, the diff between two
   versions, tags.
 - **Labeling** — queues to grade outputs, compare two runs A/B, or verify a dataset's
-  expected answers; assignment; a keyboard-driven labeler (digits, P/F, A/B/T, S, Enter).
+  expected answers; assignment; a keyboard-driven labeler (shortcuts below).
 - **Judges** — the organization's providers (keys write-only), the project's judge
   settings, every judge version seen in results, calibrations against human labels
   (agreement, Cohen's kappa, confusion), and *Promote* to make a calibrated judge the
@@ -51,6 +69,22 @@ test — still use your local `providers:`.
 - **Check catalog** — checks defined once per organization from the library's built-in
   types, versioned, exported as the `checks:` block of an `evalstone.yaml`.
 - **Members, invitations, project settings.**
+
+### Labeler shortcuts
+
+The labeler claims the next task in the queue and takes the verdict from the keyboard
+while nothing else has focus:
+
+| Key | Does |
+| --- | --- |
+| `1`…`9`, `0` | grade on a scale (`0` is 10 on a ten-point scale) |
+| `P` / `F` | pass / fail — every verify task, and grade tasks on a 2-point scale (on a verify task: the expected value is correct / wrong) |
+| `A` / `B` / `T` | A is better / B is better / tie (compare queues) |
+| `Enter` | submit the verdict and claim the next task |
+| `N` | jump into the notes box |
+| `Esc` | leave the notes box |
+| `Cmd`/`Ctrl` + `Enter` | submit from inside the notes box |
+| `S`, then `S` again within 4 s | skip the task (the first press arms, any other key disarms) |
 
 ## API
 
