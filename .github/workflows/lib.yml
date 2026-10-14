@@ -3,9 +3,9 @@ name: Lib CI
 on:
   push:
     branches: [main]
-    paths: ["python/evalstone/**", ".github/workflows/lib.yml"]
+    paths: ["python/evalstone/**", "README.md", "docs/ROADMAP.md", ".github/workflows/lib.yml"]
   pull_request:
-    paths: ["python/evalstone/**", ".github/workflows/lib.yml"]
+    paths: ["python/evalstone/**", "README.md", "docs/ROADMAP.md", ".github/workflows/lib.yml"]
 
 jobs:
   check:
