@@ -38,6 +38,14 @@ export async function inviteMember(seed: Seed, orgId: string, email: string, rol
   return authed(seed, "post", `/organizations/${orgId}/invitations`, { email, role });
 }
 
+export async function newDataset(seed: Seed, projectId: string, name: string, extra: Record<string, unknown> = {}): Promise<{ id: string; name: string }> {
+  return authed(seed, "post", `/projects/${projectId}/datasets`, { name, ...extra });
+}
+
+export async function pushVersion(seed: Seed, projectId: string, datasetId: string, samples: unknown[], note = ""): Promise<{ id: string; version: number }> {
+  return authed(seed, "post", `/projects/${projectId}/datasets/${datasetId}/versions`, { samples, note });
+}
+
 /** Mint an ingest key through the API and push a library report with it (what `evalstone run` does). */
 export async function pushRun(seed: Seed, projectId: string, report: unknown) {
   const { key } = (await authed(seed, "post", `/projects/${projectId}/ingest-keys`, { name: "spec" })) as { key: string };

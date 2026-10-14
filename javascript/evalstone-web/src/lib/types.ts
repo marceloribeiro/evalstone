@@ -120,5 +120,30 @@ export type Comparison = {
 };
 export type Page<T> = { items: T[]; total: number; offset: number; limit: number };
 
+/** `DatasetOut` — a named, tagged dataset; its content lives in immutable versions. */
+export type Dataset = { id: string; project_id: string; name: string; description: string; tags: string[]; created_at: string };
+/** `VersionOut` — one immutable, content-hashed snapshot of a dataset (hash == the library's). */
+export type DatasetVersion = {
+  id: string;
+  dataset_id: string;
+  version: number;
+  content_hash: string;
+  sample_count: number;
+  note: string;
+  created_by_user_id: string | null;
+  created_at: string;
+};
+/** `SampleOut` — a content-addressed sample as the library sees it. */
+export type Sample = {
+  id: string;
+  sample_key: string;
+  content_hash: string;
+  input: unknown;
+  expected: unknown;
+  metadata: Record<string, unknown>;
+  tags: string[];
+  source: string;
+};
+
 /** A frame from GET /ws/projects/{id}: {"event": "...", "project_id": "...", "at": "...", ...}. */
 export type LiveEvent = { event: string; project_id?: string; at?: string } & Record<string, unknown>;
