@@ -35,6 +35,12 @@ export function Labeler({ queueId }: { queueId: string }) {
   const projectId = project?.id;
   const claimedFor = useRef<string | null>(null);
   const reloadProgress = progress.reload;
+  const taskRef = useRef<HTMLDivElement>(null);
+  // each new task takes focus: hotkeys have a non-interactive home even after a mouse click on a
+  // button of the previous task, and screen readers announce the new sample
+  useEffect(() => {
+    if (task) taskRef.current?.focus();
+  }, [task]);
 
   // claiming is a write (POST …/next), so it is an explicit action: once on mount per queue, then
   // after every answer / skip — never as a by-product of a render or a loader retry
@@ -141,7 +147,7 @@ export function Labeler({ queueId }: { queueId: string }) {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4" data-testid="task" data-task-id={task.id}>
+        <div className="space-y-4 outline-none" data-testid="task" data-task-id={task.id} ref={taskRef} tabIndex={-1} aria-label={`Task ${task.position}: sample ${task.sample_key}`}>
           <p className="text-sm text-muted-foreground">
             Sample <code>{task.sample_key}</code> · task #{task.position}
           </p>

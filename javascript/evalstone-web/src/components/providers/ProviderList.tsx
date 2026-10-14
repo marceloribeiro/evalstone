@@ -71,6 +71,10 @@ function ProviderRow({ provider: p, organizationId, admin, onChanged }: { provid
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const url = (path: string) => `/organizations/${organizationId}/providers/${p.id}${path}`;
+  const changed = () => {
+    setResult(null); // a test result belongs to the key/base URL it was run with
+    onChanged();
+  };
 
   const test = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,7 +133,7 @@ function ProviderRow({ provider: p, organizationId, admin, onChanged }: { provid
                 Test
               </Button>
             </form>
-            <ProviderForm organizationId={organizationId} existing={p} onCreated={onChanged} />
+            <ProviderForm organizationId={organizationId} existing={p} onCreated={changed} />
             <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
               <DialogTrigger render={<Button size="sm" variant="outline" disabled={busy}>Delete</Button>} />
               <DialogContent>

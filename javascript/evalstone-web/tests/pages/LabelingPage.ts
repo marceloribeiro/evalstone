@@ -63,6 +63,11 @@ export class LabelingPage {
 
   /** Press keys and wait until a different task (or the end card) is on screen. */
   async verdict(keys: string[]) {
+    // hotkeys are live once nothing interactive holds focus (the task container takes it on arrival;
+    // Escape from the notes box leaves it on the body)
+    await expect
+      .poll(() => this.page.evaluate(() => { const a = document.activeElement; return !a || a === document.body || !a.matches("button, a, input, select, textarea, [contenteditable]"); }))
+      .toBe(true);
     const before = await this.currentTaskId();
     for (const k of keys) await this.page.keyboard.press(k);
     await expect

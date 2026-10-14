@@ -10,12 +10,10 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LoadError } from "@/components/common/LoadError";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import type { useLoader } from "@/hooks/useLoader";
+import type { Loaded } from "@/hooks/useLoader";
 import { api, errorMessage } from "@/lib/api";
 import { isAdmin } from "@/lib/roles";
 import type { JudgeSettings, Provider } from "@/lib/types";
-
-type Loaded<T> = ReturnType<typeof useLoader<T>>;
 
 /**
  * `default_model` + per-check `overrides`, each a `<provider>/<model>` over the organization's
@@ -39,7 +37,7 @@ export function JudgeSettingsCard({ organizationId, projectId, providers, settin
           <Link href={`/o/${organizationId}/providers`} className="underline-offset-4 hover:underline">
             providers
           </Link>
-          {names.length ? <> ({names.join(", ")})</> : <> — none yet</>}. A check without an override uses the default; without a default, the library&apos;s own `model:` applies.
+          {names.length ? <> ({names.join(", ")})</> : <> — none yet</>}. A check without an override uses the default; without a default, the library&apos;s own <code>model:</code> applies.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -85,15 +83,24 @@ function SettingsForm({ projectId, initial, onSaved, onCancel }: { projectId: st
   const [busy, setBusy] = useState(false);
   const rows = overrides.filter((o) => o.check.trim() || o.model.trim());
   const complete = rows.every((o) => o.check.trim() && o.model.trim());
+  const keys = rows.map((o) => o.check.trim());
+  const duplicate = keys.find((k, i) => k && keys.indexOf(k) !== i);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!complete) return;
+    if (!complete || duplicate) return;
     setBusy(true);
     try {
+      // PUT replaces the whole object, so apply this form's edits on top of what the server holds NOW:
+      // a Promote (or another admin) that landed while the form was open is kept, keys this form
+      // removed are removed, keys it set win.
+      const fresh = await api<JudgeSettings>(`/projects/${projectId}/judge-settings`);
+      const merged: Record<string, string> = { ...fresh.overrides };
+      for (const k of Object.keys(initial.overrides)) if (!keys.includes(k)) delete merged[k];
+      for (const o of rows) merged[o.check.trim()] = o.model.trim();
       await api(`/projects/${projectId}/judge-settings`, {
         method: "PUT",
-        body: { default_model: defaultModel.trim() || null, overrides: Object.fromEntries(rows.map((o) => [o.check.trim(), o.model.trim()])) },
+        body: { default_model: defaultModel.trim() || null, overrides: merged },
       });
       toast.success("Judge settings saved");
       onSaved();
@@ -125,9 +132,14 @@ function SettingsForm({ projectId, initial, onSaved, onCancel }: { projectId: st
         <Button type="button" variant="outline" size="sm" onClick={() => setOverrides([...overrides, { check: "", model: "" }])}>
           Add override
         </Button>
+        {duplicate && (
+          <p className="text-sm text-destructive" role="alert">
+            &quot;{duplicate}&quot; appears twice — one model per check.
+          </p>
+        )}
       </div>
       <div className="flex gap-2">
-        <Button type="submit" disabled={busy || !complete}>
+        <Button type="submit" disabled={busy || !complete || !!duplicate}>
           Save
         </Button>
         <Button type="button" variant="ghost" onClick={onCancel}>

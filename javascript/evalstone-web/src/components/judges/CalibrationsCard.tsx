@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { LoadError } from "@/components/common/LoadError";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useLiveEvent } from "@/contexts/WebSocketContext";
-import { useLoader } from "@/hooks/useLoader";
+import { useLoader, type Loaded } from "@/hooks/useLoader";
 import { api, errorMessage } from "@/lib/api";
 import { pct, when } from "@/lib/format";
 import { isAdmin } from "@/lib/roles";
 import type { Calibration, JudgeSeen, JudgeSettings } from "@/lib/types";
-
-type Loaded<T> = ReturnType<typeof useLoader<T>>;
 
 /**
  * The judge versions seen in this project's results, the calibrations run against human labels
@@ -32,17 +30,28 @@ export function CalibrationsCard({ projectId, settings }: { projectId: string; s
   const judges = useLoader(() => api<JudgeSeen[]>(`/projects/${projectId}/judges`), [projectId]);
   const calibrations = useLoader(() => api<Calibration[]>(`/projects/${projectId}/calibrations`), [projectId]);
   useLiveEvent("calibration.finished", () => calibrations.reload());
+  // the socket is the fast path; while anything is queued/running, poll too (a missed frame during a
+  // reconnect must not leave a row "queued" forever — the API says to poll the row until done/failed)
+  const pending = (calibrations.data ?? []).some((c) => c.status === "queued" || c.status === "running");
+  const reloadCalibrations = calibrations.reload;
+  useEffect(() => {
+    if (!pending) return;
+    const t = setInterval(reloadCalibrations, 5_000);
+    return () => clearInterval(t);
+  }, [pending, reloadCalibrations]);
   const [request, setRequest] = useState<JudgeSeen | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const promote = async (c: Calibration) => {
-    if (!settings.data || !c.model) return;
+    if (!c.model) return;
     setBusy(true);
     try {
+      // read-then-write on the live row: PUT replaces the whole object, and the settings on screen may be stale
+      const fresh = await api<JudgeSettings>(`/projects/${projectId}/judge-settings`);
       await api(`/projects/${projectId}/judge-settings`, {
         method: "PUT",
-        body: { default_model: settings.data.default_model, overrides: { ...settings.data.overrides, [c.check_key]: c.model } },
+        body: { default_model: fresh.default_model, overrides: { ...fresh.overrides, [c.check_key]: c.model } },
       });
       toast.success(`${c.check_key} now runs on ${c.model}`);
       settings.reload();
@@ -150,7 +159,8 @@ export function CalibrationsCard({ projectId, settings }: { projectId: string; s
                           <Button
                             size="sm"
                             variant={settings.data?.overrides[c.check_key] === c.model ? "secondary" : "outline"}
-                            disabled={busy || settings.data?.overrides[c.check_key] === c.model}
+                            disabled={busy || !settings.data || settings.data.overrides[c.check_key] === c.model}
+                            title={settings.data ? undefined : "Judge settings could not be loaded"}
                             onClick={(e) => {
                               e.stopPropagation();
                               promote(c);
@@ -167,6 +177,10 @@ export function CalibrationsCard({ projectId, settings }: { projectId: string; s
                           {c.status === "failed" ? (
                             <p className="text-sm text-destructive" data-testid="calibration-error">
                               {c.error}
+                            </p>
+                          ) : c.status !== "done" ? (
+                            <p className="text-sm text-muted-foreground" data-testid="calibration-pending">
+                              Not finished yet — the worker is computing it.
                             </p>
                           ) : (
                             <dl className="grid grid-cols-2 gap-2 text-sm md:grid-cols-4" aria-label="Confusion" data-testid="confusion">
@@ -209,6 +223,10 @@ function RequestDialog({ projectId, judge, onClose, onQueued }: { projectId: str
   const [labelCheck, setLabelCheck] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const value = labelCheck ?? judge?.check_key ?? "";
+  const close = () => {
+    setLabelCheck(null); // a value typed for one judge never carries over to the next
+    onClose();
+  };
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!judge) return;
@@ -219,9 +237,8 @@ function RequestDialog({ projectId, judge, onClose, onQueued }: { projectId: str
         body: { check_key: judge.check_key, judge_version: judge.judge_version, label_check: value.trim() },
       });
       toast.success(c.status === "done" ? `Calibrated on ${c.n} outputs` : "Calibration queued");
-      setLabelCheck(null);
       onQueued();
-      onClose();
+      close();
     } catch (err) {
       toast.error(errorMessage(err)); // e.g. no human labels under that check yet
     } finally {
@@ -229,7 +246,7 @@ function RequestDialog({ projectId, judge, onClose, onQueued }: { projectId: str
     }
   };
   return (
-    <Dialog open={!!judge} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={!!judge} onOpenChange={(o) => !o && close()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Calibrate {judge?.check_key}</DialogTitle>

@@ -14,7 +14,9 @@ type State<T> = { key: string; data: T | null; error: unknown };
  * data stays available for a stale-while-loading render. `deps` must be JSON-serialisable
  * (ids, strings, numbers, booleans).
  */
-export function useLoader<T>(loader: () => Promise<T>, deps: DependencyList) {
+export type Loaded<T> = { data: T | null; loading: boolean; error: unknown; reload: () => void };
+
+export function useLoader<T>(loader: () => Promise<T>, deps: DependencyList): Loaded<T> {
   const [tick, setTick] = useState(0);
   const key = JSON.stringify([...deps, tick]);
   const [state, setState] = useState<State<T>>({ key: "", data: null, error: null });
