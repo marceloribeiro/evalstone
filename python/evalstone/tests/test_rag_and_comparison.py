@@ -244,3 +244,35 @@ def test_config_baseline_mapping_form_and_target_form(tmp_path):
     c.providers.register("openai", JudgeFake(winner='{"winner": "A"}'))
     run = suite.run(target, ctx=c)
     assert run.summary.errors == 0 and run.summary.results == 2
+
+
+def test_pairwise_reply_cut_at_the_token_cap_says_so():
+    class Cut(JudgeFake):
+        def complete(self, request):
+            self.calls.append(request)
+            return ChatResponse(
+                text='{"winner": "A", "reason": "Answer A is more compl',
+                model=request.model,
+                cost_usd=0.001,
+                stop_reason="length",
+            )
+
+    fake = Cut()
+    score = pairwise("b", "r", baseline={"s": "x"})(S, Output(value="y"), ctx(fake))
+    assert score.passed is False
+    assert score.error.startswith("pairwise: reply truncated at max_tokens=1024")
+    assert fake.calls[0].max_tokens == 1024
+    assert score.cost_usd == pytest.approx(0.001)  # the failed call was billed: it counts
+
+
+def test_pairwise_unparseable_second_order_keeps_every_call_cost():
+    replies = iter(['{"winner": "A", "reason": "x"}', "no verdict here"])
+
+    class Half(JudgeFake):
+        def complete(self, request):
+            self.calls.append(request)
+            return ChatResponse(text=next(replies), model=request.model, cost_usd=0.001)
+
+    score = pairwise("b", "r", baseline={"s": "x"})(S, Output(value="y"), ctx(Half()))
+    assert score.passed is False and "no JSON object" in score.error
+    assert score.cost_usd == pytest.approx(0.002)

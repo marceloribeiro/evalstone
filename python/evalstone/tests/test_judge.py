@@ -16,9 +16,9 @@ class FakeProvider:
 
     name = "openai"
 
-    def __init__(self, reply=None, fail=None, judge_reply=None):
+    def __init__(self, reply=None, fail=None, judge_reply=None, stop_reason=None):
         self.reply, self.fail, self.calls = reply, fail, []
-        self.judge_reply = judge_reply
+        self.judge_reply, self.stop_reason = judge_reply, stop_reason
 
     def complete(self, request):
         self.calls.append(request)
@@ -41,6 +41,7 @@ class FakeProvider:
             output_tokens=10,
             cost_usd=0.001,
             latency_ms=12.0,
+            stop_reason=self.stop_reason,
         )
 
 
@@ -112,6 +113,44 @@ def test_judge_errors_are_never_passes():
     assert garbage.passed is False and "no JSON" in garbage.error and garbage.cost_usd == 0.001
     no_model = chk(S, Output(value="x"), ctx_with(FakeProvider(), default=None))
     assert no_model.error.startswith("no model given")
+
+
+# What a real Haiku 5.5 reply looked like when max_tokens=256 cut it mid-reason.
+CUT = '{"score": 4, "reason": "The answer directly answers the question with a concrete rule (30 da'
+
+
+@pytest.mark.parametrize("stop", ["length", "max_tokens", "MAX_TOKENS"])
+def test_a_reply_cut_at_the_token_cap_says_so_and_never_passes(stop):
+    chk = judge("h", "r", max_tokens=300)
+    score = chk(S, Output(value="x"), ctx_with(FakeProvider(judge_reply=CUT, stop_reason=stop)))
+    assert score.passed is False and score.cost_usd == 0.001
+    assert score.error.startswith(
+        "judge: reply truncated at max_tokens=300; raise the check's max_tokens "
+        "(no JSON object in judge reply: "
+    )
+    assert "concrete rule (30 da" in score.error  # the excerpt of what came back survives
+
+
+def test_truncation_only_explains_a_failed_parse():
+    # A complete verdict wins even if the provider then hit the cap.
+    full = ctx_with(
+        FakeProvider(judge_reply='{"score": 5, "reason": "ok"} and', stop_reason="length")
+    )
+    assert judge("h", "r")(S, Output(value="x"), full).passed is True
+    # A complete but wrong verdict at the cap is the model's answer, not a truncation.
+    wrong = ctx_with(
+        FakeProvider(judge_reply='{"score": 7, "reason": "x"} and', stop_reason="length")
+    )
+    assert judge("h", "r")(S, Output(value="x"), wrong).error == "judge: judge score 7 outside 1..5"
+    # A normal stop keeps the parse error as it was.
+    plain = ctx_with(FakeProvider(judge_reply=CUT, stop_reason="stop"))
+    assert "no JSON object" in judge("h", "r")(S, Output(value="x"), plain).error
+
+
+def test_judge_default_token_budget_fits_a_long_reason():
+    prov = FakeProvider()
+    judge("h", "r")(S, Output(value="30 days"), ctx_with(prov))
+    assert prov.calls[0].max_tokens == 1024
 
 
 def test_judge_cache_makes_the_second_identical_call_free():

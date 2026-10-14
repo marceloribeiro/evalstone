@@ -16,10 +16,14 @@ from evalstone._json import dumps, sha256
 from evalstone.checks._base import FunctionCheck, judge_model_for
 from evalstone.dataset import Sample
 from evalstone.output import Output
-from evalstone.providers import ChatMessage, ProviderError
+from evalstone.providers import ChatMessage, ChatResponse, ProviderError
 from evalstone.score import CheckKind, Context, Score
 
 PROMPT_VERSION = 1
+
+# Room for a verdict plus a long reason: 256 cut real Haiku 5.5 replies mid-reason
+# (4 of 10 on the rag-bot demo). The cap only bounds a runaway; it is not in the version.
+DEFAULT_MAX_TOKENS = 1024
 
 SYSTEM_TEMPLATE = """You are a strict evaluator grading one answer produced by an AI system.
 
@@ -67,6 +71,22 @@ def parse_verdict(text: str, scale: int) -> tuple[int, str]:
     return score, str(data.get("reason", "")).strip()
 
 
+def explain_unparsed(exc: ValueError, resp: ChatResponse, max_tokens: int) -> str:
+    """The parse error, prefixed with the cause when the cap cut the JSON itself.
+
+    Only an unclosed or invalid object is blamed on the cap: a complete object that is
+    wrong (score out of range, no winner) is the model's answer, not a truncation.
+    """
+    if resp.truncated:
+        try:
+            extract_json(resp.text)
+        except ValueError:
+            return (
+                f"reply truncated at max_tokens={max_tokens}; raise the check's max_tokens ({exc})"
+            )
+    return str(exc)
+
+
 class JudgeCheck(FunctionCheck):
     """A ``FunctionCheck`` whose function calls a model; exposes the judge version hash."""
 
@@ -99,7 +119,7 @@ def judge(
     pass_level: int | None = None,
     threshold: float | None = None,
     include_reference: bool = False,
-    max_tokens: int = 256,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> JudgeCheck:
     """Grade an output against ``rubric`` with a model.
 
@@ -190,7 +210,9 @@ def judge(
             n, reason = parse_verdict(resp.text, scale)
         except ValueError as exc:
             return Score.errored(
-                f"judge: {exc}", cost_usd=resp.cost_usd or 0.0, latency_ms=resp.latency_ms
+                f"judge: {explain_unparsed(exc, resp, max_tokens)}",
+                cost_usd=resp.cost_usd or 0.0,
+                latency_ms=resp.latency_ms,
             )
         score = to_score(
             n,
@@ -217,4 +239,12 @@ def _verdict_reason(score: Score) -> str:
     return str((score.raw or {}).get("verdict_reason", ""))
 
 
-__all__ = ["PROMPT_VERSION", "JudgeCheck", "extract_json", "judge", "parse_verdict"]
+__all__ = [
+    "DEFAULT_MAX_TOKENS",
+    "PROMPT_VERSION",
+    "JudgeCheck",
+    "explain_unparsed",
+    "extract_json",
+    "judge",
+    "parse_verdict",
+]

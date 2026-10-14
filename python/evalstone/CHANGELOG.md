@@ -2,6 +2,24 @@
 
 All notable changes to `python/evalstone`. Semantic versioning; tags `lib-vX.Y.Z`.
 
+## 0.2.2 — 2026-10-14
+
+Judge replies cut off by the token cap, found by the first run against a real
+vendor (Claude Haiku 5.5 via OpenRouter on the rag-bot demo: 4 of 10 verdicts
+errored).
+
+- `judge` and `comparison.pairwise` default `max_tokens` is now 1024 (was 256).
+  The cut replies needed 286–349 tokens: a verdict plus a long one-sentence reason.
+  `max_tokens` is not part of the judge version, so cached verdicts stay valid.
+- A reply the provider stopped at the cap (`length`, `max_tokens`, `MAX_TOKENS`)
+  whose JSON is unclosed or invalid now errors with "reply truncated at
+  max_tokens=N; raise the check's max_tokens" followed by the original parse error and excerpt
+  instead of only "no JSON object in judge reply". A complete verdict at the cap is
+  accepted, and a complete but wrong one (score out of range) keeps its own error.
+  `ChatResponse.truncated` exposes the check.
+- `comparison.pairwise`: an unparseable judge reply now counts that call's cost
+  (and latency) in the errored score, as `judge` already did.
+
 ## 0.2.1 — 2026-10-14
 
 Attach fixes found by the docs audit.
