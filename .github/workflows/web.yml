@@ -53,6 +53,7 @@ jobs:
           CELERY_TASK_ALWAYS_EAGER: "1"
           JWT_SECRET: ci-only-ci-only-ci-only-ci-only-32
           CORS_ORIGINS: http://localhost:8192
+          PROVIDER_ALLOW_PRIVATE_URLS: "true" # the provider spec points at a loopback port nothing listens on
         run: |
           pip install -r requirements.txt
           alembic upgrade head
