@@ -35,14 +35,16 @@ Engineering-focused snapshot. Not a product commitment.
 
 ## Next (in order)
 
-1. **Judged demo content** — judged runs, a calibration and a promoted judge in the demo
+1. **A viewer role** — the public demo signs in as a member today (it can read, label and
+   push, not delete); a role below member that only reads is the right guard.
+2. **Judged demo content** — judged runs, a calibration and a promoted judge in the demo
    organization (needs a provider key in the hosted center).
-2. **Email alerts** (Postmark) next to the webhook — deferred from the monitoring slice.
-3. **Harvest from traces** into a dataset version with embedding dedup (the pgvector column
+3. **Email alerts** (Postmark) next to the webhook — deferred from the monitoring slice.
+4. **Harvest from traces** into a dataset version with embedding dedup (the pgvector column
    exists; needs an embedding provider).
-4. **Org checks by reference** — the library pulling `checks:` from the center at run time
+5. **Org checks by reference** — the library pulling `checks:` from the center at run time
    (today: paste the YAML block the catalog page shows).
-5. **Bulk judge-cache warming** and threshold-based judge promotion.
+6. **Bulk judge-cache warming** and threshold-based judge promotion.
 
 ## Deferred (tracked, honored)
 

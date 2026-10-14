@@ -1,7 +1,7 @@
 # Quick start — run the Evalstone center with Docker
 
 The hosted center is at **https://app.evalstone.com** (API: `https://api.evalstone.com`) — sign in
-with the demo account on the [Center page](https://evalstone.com/docs/evalstone/center) to look
+with the visitor account on the [Center page](https://evalstone.com/docs/evalstone/center) to look
 around before running your own.
 
 For trying the center on one machine. Contributors run Postgres and Redis natively instead

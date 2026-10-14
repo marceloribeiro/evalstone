@@ -6,7 +6,7 @@ description: The hosted (or self-hosted) home for runs, datasets, labels, judges
 <Callout type="info" title="Live">
   The center is running at [app.evalstone.com](https://app.evalstone.com)
   (API: `https://api.evalstone.com`). Look around with the demo account —
-  **demo@evalstone.com** / **demo-rDaBMGS74RBR** — it holds the `rag-bot` sample's runs,
+  **visitor@evalstone.com** / **evalstone-demo-2026** (a member account: it can read everything, label and push, not delete) — it holds the `rag-bot` sample's runs,
   golden set, a labeling queue and a monitor with an open alert. Or self-host it:
   `docker compose up` from the repository, as in the
   [Quick start](https://github.com/marceloribeiro/evalstone/blob/main/QUICK_START.md).
@@ -65,4 +65,5 @@ and proxies use a per-project ingest key.
 
 FastAPI · SQLAlchemy 2 + Alembic · PostgreSQL 16 with pgvector · Redis · Celery for
 calibration jobs and monitor scoring · Next.js for the web app. One `docker-compose.yml`
-runs all of it for self-hosters.
+runs the API stack (PostgreSQL, Redis, API, worker, beat) for self-hosters; the web app is a
+standalone Next.js build pointed at it.

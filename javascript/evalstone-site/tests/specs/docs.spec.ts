@@ -49,7 +49,7 @@ test.describe('Learning center', () => {
     await expect(page.getByText('Released', { exact: true })).toBeVisible();
     await docs.goto('/evalstone/center');
     await expect(page.getByText('Live', { exact: true })).toBeVisible();
-    await expect(page.getByText('demo@evalstone.com')).toBeVisible();
+    await expect(page.getByText('visitor@evalstone.com')).toBeVisible();
   });
 
   test('the markdown mirror serves a chapter as text', async ({ request }) => {
