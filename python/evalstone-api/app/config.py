@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/7"
     celery_result_backend: str = "redis://localhost:6379/7"
     celery_task_always_eager: bool = False  # tests: run tasks in-process
+    # Every Celery key (queues, bindings, pidbox, results) is namespaced with this prefix, so one
+    # Redis index can be shared with another app's Celery without consuming each other's tasks
+    # (the live box has a Celery app on every index). Pub/sub channels already carry it.
+    redis_key_prefix: str = "evalstone:"
 
     docs_username: str = "evalstone"
     docs_password: str = "change-me"

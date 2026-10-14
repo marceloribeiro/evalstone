@@ -13,6 +13,8 @@ celery_app = Celery(
     include=["app.tasks"],
 )
 celery_app.conf.update(
+    broker_transport_options={"global_keyprefix": settings.redis_key_prefix},
+    result_backend_transport_options={"global_keyprefix": settings.redis_key_prefix},
     task_always_eager=settings.celery_task_always_eager,
     task_eager_propagates=True,
     task_serializer="json",
