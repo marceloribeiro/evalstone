@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -88,7 +89,11 @@ export function MonitorForm({ organizationId, projectId, base }: { organizationI
               <p className="text-xs text-muted-foreground">Loading…</p>
             ) : (
               <p className="text-xs text-muted-foreground" data-testid="catalog-empty">
-                The organization&apos;s check catalog is empty. Add a check first — the catalog editor is the next slice; until then <code>POST /organizations/{"{id}"}/checks</code> or the library&apos;s <code>checks/yaml</code> push.
+                The organization&apos;s check catalog is empty —{" "}
+                <Link href={`/o/${organizationId}/checks`} className="underline-offset-4 hover:underline">
+                  add a check
+                </Link>{" "}
+                first.
               </p>
             )}
           </fieldset>
