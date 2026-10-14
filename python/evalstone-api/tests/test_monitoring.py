@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 import respx
@@ -187,15 +189,15 @@ def test_sampling_scores_only_the_bucketed_traces(client, project, db):
     assert result["alert"] is None  # min_n not reached
 
 
-@respx.mock
-def test_judge_checks_score_with_the_orgs_provider(client, project, db, monkeypatch):
-    import uuid
+UPSTREAM = "https://judge.example.com/v1"
 
+
+def _judge_monitor(client, project) -> str:
+    """An org provider `judge`, a catalog judge check `helpful`, a monitor over it, 3 traces."""
     h, org = project["headers"], project["org"]
-    upstream = "https://judge.example.com/v1"
     client.post(
         f"/organizations/{org['id']}/providers",
-        json={"name": "judge", "adapter": "openai", "api_key": "sk-judge", "base_url": upstream},
+        json={"name": "judge", "adapter": "openai", "api_key": "sk-judge", "base_url": UPSTREAM},
         headers=h,
     )
     client.put(_p(project, "/judge-settings"), json={"default_model": "judge/small"}, headers=h)
@@ -212,23 +214,53 @@ def test_judge_checks_score_with_the_orgs_provider(client, project, db, monkeypa
     ).json()
     kh = {"Authorization": f"Bearer {_key(client, project)}"}
     client.post(_p(project, "/traces"), json={"traces": _traces(3)}, headers=kh)
-    route = respx.post(upstream + "/chat/completions").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "model": "small",
-                "choices": [{"message": {"content": '{"score": 4, "reason": "ok"}'}}],
-                "usage": {"prompt_tokens": 50, "completion_tokens": 8},
-            },
-        )
+    return m["id"]
+
+
+def _judge_reply(content: str, finish_reason: str = "stop") -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "model": "small",
+            "choices": [{"message": {"content": content}, "finish_reason": finish_reason}],
+            "usage": {"prompt_tokens": 50, "completion_tokens": 8},
+        },
     )
-    result = svc.score_monitor(db, uuid.UUID(m["id"]))
+
+
+@respx.mock
+def test_judge_checks_score_with_the_orgs_provider(client, project, db, monkeypatch):
+    import uuid
+
+    monitor_id = _judge_monitor(client, project)
+    route = respx.post(UPSTREAM + "/chat/completions").mock(
+        return_value=_judge_reply('{"score": 4, "reason": "ok"}')
+    )
+    result = svc.score_monitor(db, uuid.UUID(monitor_id))
     assert result["scored"] == 3 and result["errors"] == 0 and route.call_count == 3
     assert (
         route.calls[0].request.headers["Authorization"] == "Bearer sk-judge"
     )  # the org's key, server-side
+    # the server-side judge runs the pinned library: 0.2.2+ asks for room for a long reason
+    assert json.loads(route.calls[0].request.content)["max_tokens"] == 1024
     scores = db.query(__import__("app.models", fromlist=["TraceScore"]).TraceScore).all()
     assert all(s.passed and s.score == 0.75 for s in scores)
+
+
+@respx.mock
+def test_a_judge_reply_cut_at_the_cap_is_reported_as_truncated(client, project, db):
+    import uuid
+
+    from app.models import TraceScore
+
+    monitor_id = _judge_monitor(client, project)
+    respx.post(UPSTREAM + "/chat/completions").mock(
+        return_value=_judge_reply('{"score": 4, "reason": "The answer is', finish_reason="length")
+    )
+    result = svc.score_monitor(db, uuid.UUID(monitor_id))
+    assert result["errors"] == 3
+    errors = {s.error for s in db.query(TraceScore).all()}
+    assert all(e and "reply truncated at max_tokens=1024" in e for e in errors), errors
 
 
 def test_monitor_without_a_usable_judge_records_the_error(client, project, db):

@@ -11,5 +11,5 @@ pyjwt==2.15.1
 bcrypt==5.0.0
 email-validator==2.3.0
 cryptography==50.0.2
-evalstone[anthropic]==0.1.1
+evalstone[anthropic]==0.2.3
 pgvector==0.5.1
