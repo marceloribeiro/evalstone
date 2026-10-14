@@ -44,6 +44,16 @@ def test_dataset_crud_and_name_unique_per_project(client, project):
     )
 
 
+def test_tags_are_trimmed_and_deduplicated(client, project):
+    """The web renders tags by value (chip keys, remove-by-value): duplicates would collide."""
+    pid, h = project["id"], project["headers"]
+    body = {"name": "t", "tags": ["ci", " ci", "", "golden"]}
+    r = client.post(f"/projects/{pid}/datasets", json=body, headers=h)
+    assert r.status_code == 201 and r.json()["tags"] == ["ci", "golden"]
+    url = f"/projects/{pid}/datasets/{r.json()['id']}"
+    assert client.patch(url, json={"tags": ["a", "a"]}, headers=h).json()["tags"] == ["a"]
+
+
 def test_version_hash_matches_the_library_and_push_is_idempotent(client, project, db):
     pid, h = project["id"], project["headers"]
     did = _ds(client, project)

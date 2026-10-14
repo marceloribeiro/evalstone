@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 
-/** Tags as chips; with `onChange` (admins) each chip has a remove button and an input adds one on Enter. */
+/** Tags as chips; with `onChange` (admins) each chip has a remove button and an input adds one on Enter (only — a blur keeps the draft). */
 export function TagChips({ tags, onChange, busy }: { tags: string[]; onChange?: (tags: string[]) => void; busy?: boolean }) {
   const [draft, setDraft] = useState("");
   const add = () => {
@@ -43,7 +43,6 @@ export function TagChips({ tags, onChange, busy }: { tags: string[]; onChange?: 
               add();
             }
           }}
-          onBlur={add}
           className="h-7 w-32 text-xs"
         />
       )}

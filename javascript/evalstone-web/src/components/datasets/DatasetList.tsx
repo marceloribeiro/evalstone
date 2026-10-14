@@ -39,7 +39,7 @@ export function DatasetList() {
     try {
       const d = await api<Dataset>(`/projects/${project.id}/datasets`, {
         method: "POST",
-        body: { name: name.trim(), description, tags: tags.split(",").map((t) => t.trim()).filter(Boolean) },
+        body: { name: name.trim(), description, tags: [...new Set(tags.split(",").map((t) => t.trim()).filter(Boolean))] },
       });
       toast.success(`Dataset "${d.name}" created`);
       setOpen(false);

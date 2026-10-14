@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,9 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useLoader } from "@/hooks/useLoader";
 import { api, errorMessage } from "@/lib/api";
 import { when } from "@/lib/format";
-import type { Dataset, DatasetVersion } from "@/lib/types";
+import type { Dataset, DatasetVersion, Sample } from "@/lib/types";
+import { fetchAllSamples } from "@/lib/datasetDiff";
+import { isAdmin } from "@/lib/roles";
 
 /** One dataset: its tags (admins edit), its versions, the samples of one version, and a diff between two. */
 export function DatasetDetail({ datasetId }: { datasetId: string }) {
@@ -29,9 +31,27 @@ export function DatasetDetail({ datasetId }: { datasetId: string }) {
   const versions = useLoader(() => api<DatasetVersion[]>(`/projects/${project!.id}/datasets/${datasetId}/versions`), [project?.id, datasetId]);
   const [chosen, setChosen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  // tags as the last PATCH returned them (the API answers with the row), until the dataset reloads
+  const [patchedTags, setPatchedTags] = useState<string[] | null>(null);
+  // one fetch per version id for the diff, kept across tab switches and version clicks
+  const sampleCache = useRef(new Map<string, Promise<Sample[]>>());
+  const getSamples = useCallback(
+    (v: DatasetVersion) => {
+      let p = sampleCache.current.get(v.id);
+      if (!p) {
+        p = fetchAllSamples(project!.id, datasetId, v.version).catch((err) => {
+          sampleCache.current.delete(v.id); // a failed fetch is not cached
+          throw err;
+        });
+        sampleCache.current.set(v.id, p);
+      }
+      return p;
+    },
+    [project, datasetId],
+  );
   if (!organization || !project) return null;
   const base = `/o/${organization.id}/p/${project.id}`;
-  const canEdit = organization.role === "admin" || organization.role === "owner";
+  const canEdit = isAdmin(organization.role);
   const crumbs = [
     { label: "Home", href: "/organizations" },
     { label: organization.name, href: `/o/${organization.id}` },
@@ -53,11 +73,12 @@ export function DatasetDetail({ datasetId }: { datasetId: string }) {
   const latest = vs[vs.length - 1];
   const current = vs.find((v) => v.version === chosen) ?? latest;
 
-  const setTags = async (tags: string[]) => {
+  const tags = patchedTags ?? d.tags;
+  const setTags = async (next: string[]) => {
     setBusy(true);
     try {
-      await api(`/projects/${project.id}/datasets/${d.id}`, { method: "PATCH", body: { tags } });
-      dataset.reload();
+      const updated = await api<Dataset>(`/projects/${project.id}/datasets/${d.id}`, { method: "PATCH", body: { tags: next } });
+      setPatchedTags(updated.tags); // the next edit builds on what the API stored, not on stale props
     } catch (err) {
       toast.error(errorMessage(err));
     } finally {
@@ -102,7 +123,7 @@ export function DatasetDetail({ datasetId }: { datasetId: string }) {
         }
       />
       <div className="mb-6">
-        <TagChips tags={d.tags} onChange={canEdit ? setTags : undefined} busy={busy} />
+        <TagChips tags={tags} onChange={canEdit ? setTags : undefined} busy={busy} />
       </div>
 
       <Card className="mb-6">
@@ -160,10 +181,10 @@ export function DatasetDetail({ datasetId }: { datasetId: string }) {
             <TabsTrigger value="diff">Diff</TabsTrigger>
           </TabsList>
           <TabsContent value="samples">
-            <SampleBrowser projectId={project.id} datasetId={d.id} version={current} />
+            <SampleBrowser key={current.id} projectId={project.id} datasetId={d.id} version={current} />
           </TabsContent>
           <TabsContent value="diff">
-            <VersionDiff projectId={project.id} datasetId={d.id} versions={vs} to={current} />
+            <VersionDiff key={current.id} versions={vs} to={current} getSamples={getSamples} />
           </TabsContent>
         </Tabs>
       )}

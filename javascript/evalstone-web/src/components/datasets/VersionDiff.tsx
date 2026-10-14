@@ -7,22 +7,22 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PickOne } from "@/components/common/PickOne";
 import { LoadError } from "@/components/common/LoadError";
 import { useLoader } from "@/hooks/useLoader";
-import { diffSamples, fetchAllSamples } from "@/lib/datasetDiff";
+import { diffSamples } from "@/lib/datasetDiff";
 import { brief } from "@/lib/format";
 import type { DatasetVersion, Sample } from "@/lib/types";
 
-/** Version `to` relative to an earlier version (the previous one by default): added, removed, changed samples. */
-export function VersionDiff({ projectId, datasetId, versions, to }: { projectId: string; datasetId: string; versions: DatasetVersion[]; to: DatasetVersion }) {
+/**
+ * Version `to` relative to an earlier version (the previous one by default): added, removed, changed
+ * samples. `getSamples` is the parent's per-version cache, so tab switches do not refetch.
+ */
+export function VersionDiff({ versions, to, getSamples }: { versions: DatasetVersion[]; to: DatasetVersion; getSamples: (v: DatasetVersion) => Promise<Sample[]> }) {
   const others = versions.filter((v) => v.id !== to.id);
   const [picked, setPicked] = useState<number | null>(null);
   const previous = [...others].filter((v) => v.version < to.version).sort((a, b) => b.version - a.version)[0];
   const from = others.find((v) => v.version === picked) ?? previous ?? others[0];
   const diff = useLoader(
-    () =>
-      from
-        ? Promise.all([fetchAllSamples(projectId, datasetId, from.version), fetchAllSamples(projectId, datasetId, to.version)]).then(([a, b]) => diffSamples(a, b))
-        : Promise.resolve(null),
-    [projectId, datasetId, from?.version, to.version],
+    () => (from ? Promise.all([getSamples(from), getSamples(to)]).then(([a, b]) => diffSamples(a, b)) : Promise.resolve(null)),
+    [from?.id, to.id],
   );
   if (others.length === 0) return <p className="mt-4 text-sm text-muted-foreground">Only one version so far — nothing to diff against.</p>;
   const items: Record<string, string> = Object.fromEntries(others.map((v) => [String(v.version), `v${v.version} · ${v.sample_count} samples`]));

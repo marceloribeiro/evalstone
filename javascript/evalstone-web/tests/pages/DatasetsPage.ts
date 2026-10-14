@@ -20,6 +20,11 @@ export class DatasetsPage {
     if (tags) await this.page.getByLabel("Tags (comma-separated)").fill(tags);
     await this.page.getByRole("button", { name: "Create" }).click();
     await expect(this.page.getByRole("heading", { level: 1, name })).toBeVisible();
+    return this.page.url().split("/datasets/")[1]; // the id the app navigated to
+  }
+
+  addTagInput() {
+    return this.page.getByLabel("Add tag");
   }
 
   async openDataset(name: string) {

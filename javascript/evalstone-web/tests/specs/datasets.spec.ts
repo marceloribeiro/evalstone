@@ -1,6 +1,7 @@
 import { test, expect } from "../fixtures/auth";
-import { newDataset, newOrganization, newProject, pushVersion } from "../fixtures/api";
+import { inviteMember, newDataset, newOrganization, newProject, newUser, pushVersion } from "../fixtures/api";
 import { DatasetsPage } from "../pages/DatasetsPage";
+import { LoginPage } from "../pages/LoginPage";
 
 const V1 = [
   { id: "return-window", input: "How many days do I have to return something?", expected: "30 days", tags: ["returns"] },
@@ -21,13 +22,13 @@ test.describe("Datasets", () => {
     const datasets = new DatasetsPage(page);
     await datasets.goto(org.id, project.id);
     await expect(page.getByText("No datasets yet")).toBeVisible();
-    await datasets.createDataset("golden", "The hand-written answers", "golden, ci");
+    const datasetId = await datasets.createDataset("golden", "The hand-written answers", "golden, ci, ci");
     await expect(datasets.tags()).toContainText("golden");
+    await expect(datasets.tags().getByText("ci", { exact: true })).toHaveCount(1); // de-duplicated on create
     await expect(page.getByText("No versions yet")).toBeVisible();
 
-    const ds = (await (await seed.api.get(`/projects/${project.id}/datasets`, { headers: { Authorization: `Bearer ${seed.token}` } })).json()) as { id: string }[];
-    await pushVersion(seed, project.id, ds[0].id, V1, "first");
-    await pushVersion(seed, project.id, ds[0].id, V2, "second");
+    await pushVersion(seed, project.id, datasetId, V1, "first");
+    await pushVersion(seed, project.id, datasetId, V2, "second");
     await page.reload();
     await expect(datasets.versions()).toContainText("v2");
     await expect(datasets.versions().getByRole("row").filter({ hasText: "v2" })).toContainText("latest");
@@ -62,20 +63,41 @@ test.describe("Datasets", () => {
     await datasets.goto(org.id, project.id);
     await datasets.openDataset("nightly");
     await datasets.addTag("regression");
-    await datasets.addTag("v2");
+    await datasets.addTag("v2"); // right after the first: builds on what the API stored, not stale props
     await page.reload();
     await expect(datasets.tags()).toContainText("regression");
     await expect(datasets.tags()).toContainText("v2");
+    // a draft in the add box is not committed by clicking elsewhere, and the remove still lands
+    await datasets.addTagInput().fill("draft");
     await datasets.removeTag("regression");
+    await expect(datasets.tags()).not.toContainText("draft");
+    await expect(datasets.addTagInput()).toHaveValue("draft");
     await page.reload();
     await expect(datasets.tags()).not.toContainText("regression");
+    await expect(datasets.tags()).not.toContainText("draft");
     await datasets.deleteDataset();
     await expect(page.getByText("No datasets yet")).toBeVisible();
   });
 
+  test("switching to a smaller version after paging resets the pager (the version is not shown as empty)", async ({ authedPage: page, seed }) => {
+    const org = await newOrganization(seed, "Pager Org");
+    const project = await newProject(seed, org.id, "Pager Project");
+    const ds = await newDataset(seed, project.id, "big");
+    const big = Array.from({ length: 60 }, (_, i) => ({ id: `q-${String(i).padStart(2, "0")}`, input: `question ${i}`, expected: `answer ${i}` }));
+    await pushVersion(seed, project.id, ds.id, big.slice(0, 3), "small");
+    await pushVersion(seed, project.id, ds.id, big, "big");
+    const datasets = new DatasetsPage(page);
+    await datasets.goto(org.id, project.id);
+    await datasets.openDataset("big");
+    await expect(datasets.samples()).toContainText("q-00");
+    await page.getByRole("button", { name: "Next" }).click();
+    await expect(datasets.samples()).toContainText("q-59");
+    await datasets.chooseVersion(1);
+    await expect(datasets.samples()).toContainText("q-00");
+    await expect(page.getByText("This version is empty.")).toHaveCount(0);
+  });
+
   test("a member sees tags but cannot edit or delete", async ({ page, seed }) => {
-    const { newUser, inviteMember } = await import("../fixtures/api");
-    const { LoginPage } = await import("../pages/LoginPage");
     const org = await newOrganization(seed, "RO Org");
     const project = await newProject(seed, org.id, "RO Project");
     await newDataset(seed, project.id, "golden", { tags: ["ci"] });

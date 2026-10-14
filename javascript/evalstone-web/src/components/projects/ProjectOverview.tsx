@@ -16,6 +16,7 @@ import type { IngestKey, IngestKeyCreated, Page, Run } from "@/lib/types";
 import { useLoader } from "@/hooks/useLoader";
 import { useLiveEvent } from "@/contexts/WebSocketContext";
 import { pct, when } from "@/lib/format";
+import { isAdmin } from "@/lib/roles";
 
 /** The project home: how to attach, the live feed, the latest runs — the hero of the scaffold. */
 export function ProjectOverview() {
@@ -24,7 +25,7 @@ export function ProjectOverview() {
   const runs = useLoader(() => api<Page<Run>>(`/projects/${project!.id}/runs`, { query: { limit: 5 } }), [project?.id]);
   useLiveEvent("run.stored", () => runs.reload());
   // ingest keys are admin-only on the API (403 for a member): do not even ask for them
-  const canManageKeys = organization?.role === "admin" || organization?.role === "owner";
+  const canManageKeys = isAdmin(organization?.role);
   const keys = useLoader(
     () => (canManageKeys ? api<IngestKey[]>(`/projects/${project!.id}/ingest-keys`) : Promise.resolve([] as IngestKey[])),
     [project?.id, canManageKeys],

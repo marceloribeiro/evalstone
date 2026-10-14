@@ -4,7 +4,7 @@ import type { Page, Sample } from "@/lib/types";
 export type SampleDiff = {
   added: Sample[];
   removed: Sample[];
-  /** same sample key, different content (input / expected / metadata / tags changed) */
+  /** same sample key, different content hash (input / expected / tags — metadata is not part of the hash) */
   changed: { key: string; before: Sample; after: Sample }[];
   unchanged: number;
 };
