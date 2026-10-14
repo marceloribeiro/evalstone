@@ -1,4 +1,4 @@
-<p align="center"><strong>Evalstone</strong></p>
+<p align="center"><img src="docs/img/logo.svg" alt="" width="72" height="72"><br><strong>Evalstone</strong></p>
 
 **Open-source evals for LLM apps — and a course on how to do them.** Write datasets, checks
 and gates in plain Python, run them in CI, and keep a shared golden set, a labeling queue
