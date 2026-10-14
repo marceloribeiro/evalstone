@@ -2123,6 +2123,11 @@
           "default": {
             "title": "Default"
           },
+          "falls_back_to_expected": {
+            "default": false,
+            "title": "Falls Back To Expected",
+            "type": "boolean"
+          },
           "machine_bound": {
             "anyOf": [
               {

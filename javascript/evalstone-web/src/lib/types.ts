@@ -242,6 +242,11 @@ export type CatalogCheck = {
   created_at: string;
   updated_at: string;
 };
+/** `CheckVersionOut` — an immutable snapshot of a catalog check's type + params. */
+export type CheckVersion = { id: string; version: number; type: string; params: Record<string, unknown>; content_hash: string; note: string; created_by_user_id: string | null; created_at: string };
+/** `ParamOut` / `BuiltinOut` — a built-in check type of the library this center runs, with its factory params. */
+export type CheckParam = { name: string; required: boolean; falls_back_to_expected: boolean; default: unknown; annotation: string; machine_bound: "callable" | "path" | "target" | null };
+export type BuiltinCheck = { type: string; kind: string; params: CheckParam[]; summary: string; library_version: string; storable: boolean };
 export type AlertPolicy = { metric: "pass_rate" | "mean_score"; threshold: number; window_minutes: number; min_n: number };
 /** `MonitorOut` — sampled production traces scored by catalog checks on the beat, with an alert policy. */
 export type Monitor = {

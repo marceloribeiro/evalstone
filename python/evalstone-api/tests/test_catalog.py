@@ -174,7 +174,9 @@ def test_kinds_and_sentinels_mirror_the_library(client, org):
             continue  # needs a required param
         assert rows[t]["kind"] == built.kind, t
     exact = {p["name"]: p for p in rows["exact"]["params"]}
-    assert exact["expected"]["required"] is True and exact["expected"]["default"] is None
+    # `_MISSING` is not "required": leaving it out compares against sample.expected
+    assert exact["expected"]["required"] is False and exact["expected"]["default"] is None
+    assert exact["expected"]["falls_back_to_expected"] is True
     assert "object at 0x" not in str(rows)  # no sentinel address leaks
     assert rows["comparison.pairwise"]["storable"] is True  # a plain mapping baseline is fine
     tc = {p["name"]: p["machine_bound"] for p in rows["trajectory.tool_called"]["params"]}
