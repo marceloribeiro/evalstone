@@ -57,28 +57,29 @@ export class LabelingPage {
     return this.page.getByTestId("counter");
   }
 
+  /** The task on screen (fails with "no task on screen" rather than hanging when there is none). */
   async currentTaskId() {
+    await expect(this.task(), "no task on screen").toBeVisible();
     return this.task().getAttribute("data-task-id");
   }
 
   /** Press keys and wait until a different task (or the end card) is on screen. */
   async verdict(keys: string[]) {
-    // hotkeys are live once nothing interactive holds focus (the task container takes it on arrival;
-    // Escape from the notes box leaves it on the body)
-    await expect
-      .poll(() => this.page.evaluate(() => { const a = document.activeElement; return !a || a === document.body || !a.matches("button, a, input, select, textarea, [contenteditable]"); }))
-      .toBe(true);
     const before = await this.currentTaskId();
-    for (const k of keys) await this.page.keyboard.press(k);
-    // Non-waiting reads only: between tasks the page shows a skeleton with neither the task nor the
-    // done card, and a waiting `getAttribute` there blocks the poll until it times out (the flake).
+    // the panel marks itself hotkey-ready from the effect that attaches the keydown listener, and
+    // nothing interactive may hold focus (a focused button would take Enter as its own click)
+    await expect(this.page.locator('[data-testid="verdict"][data-hotkeys="ready"]'), "verdict panel hotkeys not ready").toBeVisible();
     await expect
-      .poll(async () => {
-        if ((await this.page.getByTestId("queue-done").count()) > 0) return true;
-        const ids = await this.task().evaluateAll((els) => els.map((e) => e.getAttribute("data-task-id")));
-        return ids.length > 0 && ids[0] !== before;
-      })
+      .poll(() => this.page.evaluate(() => { const a = document.activeElement; return !a || a === document.body || !a.matches("button, a, input, select, textarea, [contenteditable]"); }), { message: "something interactive holds focus" })
       .toBe(true);
+    for (const k of keys) await this.page.keyboard.press(k);
+    // one self-retrying, strict assertion: the done card, a task other than `before`, or an error
+    // surfaced by the app (reported instead of waiting out the clock)
+    const outcome = this.page.locator(`[data-testid="queue-done"], [data-testid="task"]:not([data-task-id="${before}"]), [data-testid="load-error"], [data-sonner-toast][data-type="error"]`);
+    await expect(outcome.first(), `verdict ${keys.join("+")} → next task or done card`).toBeVisible({ timeout: 10_000 });
+    const kind = await outcome.first().evaluate((el) => el.getAttribute("data-testid") ?? "toast");
+    if (kind === "load-error" || kind === "toast") throw new Error(`verdict ${keys.join("+")} failed: ${await outcome.first().innerText()}`);
+    await expect(this.task(), "more than one task on screen").toHaveCount(await this.page.getByTestId("queue-done").count() ? 0 : 1);
   }
 
   async expectDone() {

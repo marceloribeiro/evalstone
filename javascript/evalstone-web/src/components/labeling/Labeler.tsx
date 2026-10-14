@@ -169,6 +169,7 @@ function VerdictPanel({ queue: q, busy, onSubmit, onSkip }: { queue: LabelQueue;
   const [notes, setNotes] = useState("");
   const [skipArmed, setSkipArmed] = useState(false);
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const binary = isBinary(q.kind, q.scale);
   const canSubmit = !busy && (q.kind === "compare" ? !!choice.winner : binary ? choice.passed !== undefined : choice.grade !== undefined);
   const submit = useCallback(() => {
@@ -217,11 +218,12 @@ function VerdictPanel({ queue: q, busy, onSubmit, onSkip }: { queue: LabelQueue;
       }
     };
     window.addEventListener("keydown", onKey);
+    panelRef.current?.setAttribute("data-hotkeys", "ready"); // set from the same effect: "the listener is attached"
     return () => window.removeEventListener("keydown", onKey);
   }, [q.kind, q.scale, binary, submit, skip, skipArmed]);
 
   return (
-    <Card>
+    <Card ref={panelRef} data-testid="verdict">
       <CardHeader>
         <CardTitle>Your verdict</CardTitle>
       </CardHeader>
