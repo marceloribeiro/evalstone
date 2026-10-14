@@ -129,6 +129,8 @@ an alert policy — `metric` (`pass_rate` or `mean_score`) below `threshold`
 over `window_minutes` with at least `min_n` scored traces — and an optional
 `webhook_url`. A monitor page shows the window the policy sees right now, its
 alerts and the recent traces; admins pause/resume, **score now**, delete.
+Judge checks in a monitor use the project's judge settings like an attached
+run: the check's override (what **Promote** pins), else the default model.
 
 Traces arrive with the project's ingest key (`POST /projects/{id}/traces`,
 batches of `{id, input, output, metadata, tags, model, latency_ms, cost_usd,
