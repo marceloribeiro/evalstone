@@ -30,7 +30,12 @@ test.describe("Labeling", () => {
     await expect(labeling.task()).toContainText("fail"); // the machine verdict is shown
     await labeling.verdict(["4", "Enter"]); // grade 4 of 5
     await expect(labeling.counter()).toHaveText("1 of 5 done");
-    await labeling.verdict(["s"]); // skip
+    // a skip is terminal: one S only arms it, a second S within a few seconds skips
+    const armedOn = await labeling.currentTaskId();
+    await page.keyboard.press("s");
+    await expect(page.getByRole("button", { name: "Press again to skip (S)" })).toBeVisible();
+    expect(await labeling.currentTaskId()).toBe(armedOn);
+    await labeling.verdict(["s"]);
     await expect(labeling.counter()).toHaveText("2 of 5 done");
     // notes: typing in the box must not trigger the hotkeys; ⌘/Ctrl+Enter submits from it
     await page.keyboard.press("n");
@@ -66,7 +71,13 @@ test.describe("Labeling", () => {
     await labeling.gotoQueue(org.id, project.id, cmp.id, "v1 vs v2");
     await labeling.startLabeling();
     await expect(page.getByTestId("output-b")).toContainText("(v2)");
-    await labeling.verdict(["b", "Enter"]);
+    // a verdict chosen with the mouse leaves focus on that button: Enter there must not also fire the hotkey
+    await page.getByRole("button", { name: "B is better (B)" }).click();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "B is better (B)" })).toHaveAttribute("aria-pressed", "true");
+    const before = await labeling.currentTaskId();
+    await page.getByRole("button", { name: "Submit (Enter)" }).click();
+    await expect.poll(async () => labeling.currentTaskId()).not.toBe(before);
     await expect(labeling.counter()).toHaveText("1 of 10 done");
     await labeling.verdict(["t", "Enter"]);
     await expect(labeling.counter()).toHaveText("2 of 10 done");

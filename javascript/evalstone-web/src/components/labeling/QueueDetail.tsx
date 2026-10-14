@@ -12,7 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageHeader } from "@/components/layout/PageHeader";
 import { LoadError } from "@/components/common/LoadError";
 import { Pager } from "@/components/common/Pager";
-import { KIND_LABEL } from "@/components/labeling/QueueList";
+import { KIND_LABEL } from "@/lib/labeling";
+import { Stat } from "@/components/common/Stat";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useLoader } from "@/hooks/useLoader";
 import { api, errorMessage } from "@/lib/api";
@@ -32,6 +33,7 @@ export function QueueDetail({ queueId }: { queueId: string }) {
   const tasks = useLoader(() => api<Page<LabelTask>>(`/projects/${project!.id}/label-queues/${queueId}/tasks`, { query: { offset, limit: LIMIT } }), [project?.id, queueId, offset]);
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [confirmUnassign, setConfirmUnassign] = useState(false);
   if (!organization || !project) return null;
   const base = `/o/${organization.id}/p/${project.id}`;
   const admin = isAdmin(organization.role);
@@ -65,6 +67,7 @@ export function QueueDetail({ queueId }: { queueId: string }) {
     try {
       await fn();
       toast.success(label);
+      setConfirmUnassign(false);
       refresh();
     } catch (err) {
       toast.error(errorMessage(err));
@@ -91,9 +94,7 @@ export function QueueDetail({ queueId }: { queueId: string }) {
           <>
             <Badge variant={q.status === "open" ? "default" : "secondary"}>{q.status}</Badge>
             {q.status === "open" && (p?.pending ?? 1) > 0 ? (
-              <Link href={`${base}/labeling/${q.id}/label`} className="inline-flex">
-                <Button>Label</Button>
-              </Link>
+              <Button render={<Link href={`${base}/labeling/${q.id}/label`} />}>Label</Button>
             ) : (
               <Button disabled>Label</Button>
             )}
@@ -150,7 +151,7 @@ export function QueueDetail({ queueId }: { queueId: string }) {
                 <Button size="sm" disabled={busy || picked.length === 0 || q.status !== "open"} onClick={assign}>
                   Assign pending tasks
                 </Button>
-                <Dialog>
+                <Dialog open={confirmUnassign} onOpenChange={setConfirmUnassign}>
                   <DialogTrigger render={<Button size="sm" variant="outline" disabled={busy}>Unassign all</Button>} />
                   <DialogContent>
                     <DialogHeader>
@@ -158,7 +159,7 @@ export function QueueDetail({ queueId }: { queueId: string }) {
                       <DialogDescription>Claimed-but-unanswered tasks go back to the pool.</DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                      <Button variant="destructive" onClick={unassign}>
+                      <Button variant="destructive" disabled={busy} onClick={unassign}>
                         Unassign
                       </Button>
                     </DialogFooter>
@@ -211,15 +212,6 @@ export function QueueDetail({ queueId }: { queueId: string }) {
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border p-3">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-lg font-semibold">{value}</dd>
     </div>
   );
 }

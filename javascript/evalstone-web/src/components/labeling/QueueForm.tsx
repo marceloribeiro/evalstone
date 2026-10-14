@@ -45,6 +45,7 @@ export function QueueForm({ projectId, base }: { projectId: string; base: string
   const datasetItems: Record<string, string> = Object.fromEntries((datasets.data ?? []).map((d) => [d.id, d.name]));
   const versionItems: Record<string, string> = Object.fromEntries((versions.data ?? []).map((v) => [String(v.version), `v${v.version} · ${v.sample_count} samples`]));
 
+  const scaleOk = kind !== "grade" || (Number.isInteger(Number(scale)) && Number(scale) >= 2 && Number(scale) <= 10);
   const source =
     kind === "grade"
       ? runId && { run_id: runId, ...(checkKey ? { check_key: checkKey } : {}), ...(failedOnly ? { failed_only: true } : {}) }
@@ -54,12 +55,12 @@ export function QueueForm({ projectId, base }: { projectId: string; base: string
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!source) return;
+    if (!source || !scaleOk) return;
     setBusy(true);
     try {
       const q = await api<LabelQueue>(`/projects/${projectId}/label-queues`, {
         method: "POST",
-        body: { name: name.trim(), kind, source, instructions, check_key: kind === "compare" ? "" : labelKey.trim(), scale: Number(scale) },
+        body: { name: name.trim(), kind, source, instructions, check_key: kind === "compare" ? "" : labelKey.trim(), scale: kind === "grade" ? Number(scale) : 2 },
       });
       toast.success(`Queue "${q.name}" created with ${q.task_count} task${q.task_count === 1 ? "" : "s"}`);
       setOpen(false);
@@ -91,7 +92,16 @@ export function QueueForm({ projectId, base }: { projectId: string; base: string
           {kind !== "verify" && (
             <div className="space-y-1">
               <Label>{kind === "compare" ? "Run A" : "Run"}</Label>
-              <PickOne label={kind === "compare" ? "Run A" : "Run"} value={runId} items={runItems} onChange={setRunId} className="w-full" />
+              <PickOne
+                label={kind === "compare" ? "Run A" : "Run"}
+                value={runId}
+                items={runItems}
+                onChange={(v) => {
+                  setRunId(v);
+                  setCheckKey(""); // a check chosen for another run must not leak into this one
+                }}
+                className="w-full"
+              />
             </div>
           )}
           {kind === "compare" && (
@@ -124,7 +134,7 @@ export function QueueForm({ projectId, base }: { projectId: string; base: string
               </div>
             </>
           )}
-          {kind !== "compare" && (
+          {kind === "grade" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor="queue-label-key">Label key</Label>
@@ -140,7 +150,7 @@ export function QueueForm({ projectId, base }: { projectId: string; base: string
             <Label htmlFor="queue-instructions">Instructions for labelers</Label>
             <Textarea id="queue-instructions" rows={3} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
           </div>
-          <Button type="submit" disabled={busy || !name.trim() || !source}>
+          <Button type="submit" disabled={busy || !name.trim() || !source || !scaleOk}>
             Create
           </Button>
         </form>

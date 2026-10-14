@@ -14,6 +14,7 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useLoader } from "@/hooks/useLoader";
 import { api, ApiError, errorMessage } from "@/lib/api";
 import { brief } from "@/lib/format";
+import { isBinary } from "@/lib/labeling";
 import type { ComparePayload, GradePayload, LabelQueue, LabelTask, QueueProgress, VerifyPayload } from "@/lib/types";
 
 type Choice = { grade?: number; passed?: boolean; winner?: "a" | "b" | "tie" };
@@ -28,16 +29,34 @@ export function Labeler({ queueId }: { queueId: string }) {
   const { organization, project } = useWorkspace();
   const queue = useLoader(() => api<LabelQueue>(`/projects/${project!.id}/label-queues/${queueId}`), [project?.id, queueId]);
   const progress = useLoader(() => api<QueueProgress>(`/projects/${project!.id}/label-queues/${queueId}/progress`), [project?.id, queueId]);
-  const [round, setRound] = useState(0);
-  const claim = useLoader(() => api<LabelTask | null>(`/projects/${project!.id}/label-queues/${queueId}/next`, { method: "POST" }), [project?.id, queueId, round]);
+  const [task, setTask] = useState<LabelTask | null | undefined>(undefined); // undefined = claiming, null = nothing left
+  const [claimError, setClaimError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const projectId = project?.id;
-  const task = claim.loading ? undefined : claim.data; // undefined = claiming, null = nothing left
+  const claimedFor = useRef<string | null>(null);
+  const reloadProgress = progress.reload;
+
+  // claiming is a write (POST …/next), so it is an explicit action: once on mount per queue, then
+  // after every answer / skip — never as a by-product of a render or a loader retry
+  const claimNext = useCallback(() => {
+    if (!projectId) return;
+    setTask(undefined);
+    setClaimError(null);
+    api<LabelTask | null>(`/projects/${projectId}/label-queues/${queueId}/next`, { method: "POST" })
+      .then((t) => setTask(t))
+      .catch((err) => setClaimError(err));
+  }, [projectId, queueId]);
+  useEffect(() => {
+    const key = `${projectId}:${queueId}`;
+    if (!projectId || claimedFor.current === key) return; // StrictMode double-mount: one claim
+    claimedFor.current = key;
+    claimNext();
+  }, [projectId, queueId, claimNext]);
 
   const advance = useCallback(() => {
-    progress.reload();
-    setRound((r) => r + 1);
-  }, [progress]);
+    reloadProgress();
+    claimNext();
+  }, [reloadProgress, claimNext]);
 
   const submit = useCallback(
     async (taskId: string, choice: Choice, notes: string) => {
@@ -64,6 +83,7 @@ export function Labeler({ queueId }: { queueId: string }) {
         advance();
       } catch (err) {
         toast.error(errorMessage(err));
+        if (err instanceof ApiError && err.status === 409) advance(); // same as answer: do not get stuck on it
       } finally {
         setBusy(false);
       }
@@ -106,8 +126,8 @@ export function Labeler({ queueId }: { queueId: string }) {
           </span>
         }
       />
-      {claim.error ? (
-        <LoadError what="the next task" error={claim.error} retry={claim.reload} />
+      {claimError ? (
+        <LoadError what="the next task" error={claimError} retry={claimNext} />
       ) : task === undefined ? (
         <Skeleton className="h-40 w-full" data-testid="claiming" />
       ) : task === null ? (
@@ -135,33 +155,47 @@ export function Labeler({ queueId }: { queueId: string }) {
   );
 }
 
+const SKIP_ARM_MS = 4000;
+
 /** The verdict controls for one task: owns the choice and notes, listens to the keyboard. */
 function VerdictPanel({ queue: q, busy, onSubmit, onSkip }: { queue: LabelQueue; busy: boolean; onSubmit: (choice: Choice, notes: string) => void; onSkip: (notes: string) => void }) {
   const [choice, setChoice] = useState<Choice>({});
   const [notes, setNotes] = useState("");
+  const [skipArmed, setSkipArmed] = useState(false);
   const notesRef = useRef<HTMLTextAreaElement>(null);
-  const binary = q.kind === "verify" || q.scale === 2;
+  const binary = isBinary(q.kind, q.scale);
   const canSubmit = !busy && (q.kind === "compare" ? !!choice.winner : binary ? choice.passed !== undefined : choice.grade !== undefined);
   const submit = useCallback(() => {
     if (canSubmit) onSubmit(choice, notes);
   }, [canSubmit, onSubmit, choice, notes]);
+  // a skip is terminal (no un-skip on the API), so it takes two presses: the first arms for a few seconds
   const skip = useCallback(() => {
-    if (!busy) onSkip(notes);
-  }, [busy, onSkip, notes]);
+    if (busy) return;
+    if (skipArmed) onSkip(notes);
+    else setSkipArmed(true);
+  }, [busy, skipArmed, onSkip, notes]);
+  useEffect(() => {
+    if (!skipArmed) return;
+    const t = setTimeout(() => setSkipArmed(false), SKIP_ARM_MS);
+    return () => clearTimeout(t);
+  }, [skipArmed]);
 
-  // keyboard: ignored while typing in the notes box (Esc leaves it; Cmd/Ctrl+Enter submits from it)
+  // keyboard: only when nothing interactive has focus (a focused button gets its own click on Enter);
+  // ignored while typing in the notes box (Esc leaves it; Cmd/Ctrl+Enter submits from it)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const inNotes = document.activeElement === notesRef.current;
-      if (inNotes) {
+      const active = document.activeElement;
+      if (active === notesRef.current) {
         if (e.key === "Escape") notesRef.current?.blur();
         else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         return;
       }
+      if (active && active !== document.body && active.matches("button, a, input, select, textarea, [contenteditable]")) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === "enter") return submit();
       if (k === "s") return skip();
+      if (k !== "s" && skipArmed) setSkipArmed(false); // any other key disarms
       if (k === "n") {
         e.preventDefault();
         return notesRef.current?.focus();
@@ -178,7 +212,7 @@ function VerdictPanel({ queue: q, busy, onSubmit, onSkip }: { queue: LabelQueue;
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [q.kind, q.scale, binary, submit, skip]);
+  }, [q.kind, q.scale, binary, submit, skip, skipArmed]);
 
   return (
     <Card>
@@ -215,8 +249,8 @@ function VerdictPanel({ queue: q, busy, onSubmit, onSkip }: { queue: LabelQueue;
           <Button disabled={!canSubmit} onClick={submit}>
             Submit (Enter)
           </Button>
-          <Button variant="outline" disabled={busy} onClick={skip}>
-            Skip (S)
+          <Button variant={skipArmed ? "destructive" : "outline"} disabled={busy} onClick={skip} aria-pressed={skipArmed}>
+            {skipArmed ? "Press again to skip (S)" : "Skip (S)"}
           </Button>
           <span className="ml-auto text-xs text-muted-foreground">
             Keys: {q.kind === "compare" ? "A · B · T" : binary ? "P · F" : `1–${q.scale}`} · N notes · S skip · Enter submit

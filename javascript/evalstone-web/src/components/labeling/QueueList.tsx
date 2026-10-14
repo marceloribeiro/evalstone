@@ -12,9 +12,9 @@ import { useLoader } from "@/hooks/useLoader";
 import { api } from "@/lib/api";
 import { when } from "@/lib/format";
 import { isAdmin } from "@/lib/roles";
+import { KIND_LABEL } from "@/lib/labeling";
 import type { LabelQueue } from "@/lib/types";
 
-export const KIND_LABEL: Record<LabelQueue["kind"], string> = { grade: "Grade outputs", compare: "A/B compare", verify: "Verify dataset" };
 
 /** The project's labeling queues; admins create them from a run, two runs, or a dataset version. */
 export function QueueList() {
