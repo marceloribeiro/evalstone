@@ -16,6 +16,11 @@ evalstone run nightly   # the results table + a JSON report, to look at
 evalstone gate nightly  # runs the suite itself and exits 1 when the gate fails: the CI step
 ```
 
+![One minute of Evalstone: init, a gate that catches a regression, then labeling, calibrating and promoting a judge in the center](docs/img/walkthrough.gif)
+
+<sub>The CLI against a fresh project, then the center (run locally): a judged run, ten labels from the
+keyboard, a calibration, Promote.</sub>
+
 **Learn evals:** [Evals 101](https://evalstone.com/docs/learn) · **Docs:** [evalstone.com/docs](https://evalstone.com/docs)
 · **Try the center:** [app.evalstone.com](https://app.evalstone.com) (the demo login is on the
 [Center page](https://evalstone.com/docs/evalstone/center))
