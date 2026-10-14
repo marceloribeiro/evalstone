@@ -20,9 +20,17 @@ evalstone gate nightly  # exits 1 when the gate fails: that is your CI step
 · **Try the center:** [app.evalstone.com](https://app.evalstone.com) (the demo login is on the
 [Center page](https://evalstone.com/docs/evalstone/center))
 
-| A run: per-check results, the gate, the judge's reasons | Labeling: grade outputs from the keyboard | Calibration: how far to trust a judge, then Promote it |
-| --- | --- | --- |
-| ![A judged run in the center](docs/img/run.png) | ![The labeler](docs/img/labeler.png) | ![Judges and a calibration](docs/img/calibration.png) |
+**A run** — per-check results, the gate, and the judge's reason for every verdict:
+
+![A judged run in the center](docs/img/run.png)
+
+**Labeling** — people grade outputs from the keyboard:
+
+![The labeler](docs/img/labeler.png)
+
+**Calibration** — how far to trust a judge against those labels, then Promote it:
+
+![Judges and a calibration](docs/img/calibration.png)
 
 > **Status:** the library is on PyPI (CLI, MCP server, pytest plugin, terminal labeling), the
 > GitHub Action is `marceloribeiro/evalstone/action@action-v0`, and the center is live at
