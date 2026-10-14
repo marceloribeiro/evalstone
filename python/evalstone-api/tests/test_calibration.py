@@ -17,7 +17,7 @@ def _judged_report(
     jv=JV,
     model="local/tiny",
     flip: set[str] = frozenset(),
-    judge_model: str | None = None,
+    judge_model: str | None = "local/tiny",  # None = a library before 0.2.3 (no routed stamp)
 ):
     """The sample report with one judge check `helpful` whose verdicts the humans will grade."""
     r = copy.deepcopy(REPORT)
@@ -86,7 +86,7 @@ def test_judges_lists_versions_seen_in_runs(client, project):
     client.post(f"/projects/{project['id']}/runs", json=_judged_report(), headers=h)
     client.post(
         f"/projects/{project['id']}/runs",
-        json=_judged_report(run_id="judge0000002", jv="aaaaaaaaaaaaaaaa", model="other/big"),
+        json=_judged_report(run_id="judge0000002", jv="aaaaaaaaaaaaaaaa", judge_model="other/big"),
         headers=h,
     )
     client.post(f"/projects/{project['id']}/runs", json=REPORT, headers=h)  # deterministic only
@@ -359,24 +359,45 @@ def test_promote_pins_the_routed_model_not_the_provider_reported_one(client, pro
     assert put.json()["overrides"] == {"helpful": "openrouter/anthropic/claude-haiku-5.5"}
 
 
-def test_the_newest_stamp_wins_when_libraries_mix_on_one_version(client, project):
-    """One judge version pushed first by lib 0.2.2 (provider id only), then by 0.2.3 (routed):
-    `min()` picked `anthropic/…` over `openrouter/…`; the newest verdict's stamp must win."""
+def test_older_library_results_carry_no_model_and_never_override_the_routed_one(client, project):
+    """Review of #54: a 0.2.2 push (provider-reported id only) that finishes AFTER a 0.2.3 one
+    on the same version, labels only on the old-library outputs, and a version seen only from
+    0.2.2 — the routed stamp is the only model Judges/calibrations/Promote ever see."""
     h = project["headers"]
-    old = _judged_report(run_id="judge0000old", model="anthropic/claude-haiku-5.5")
-    old["started_at"], old["finished_at"] = "2026-10-01T00:00:00Z", "2026-10-01T00:00:01Z"
+    routed = "openrouter/anthropic/claude-haiku-5.5"
     new = _judged_report(
-        run_id="judge0000new",
-        model="anthropic/claude-haiku-5.5",
-        judge_model="openrouter/anthropic/claude-haiku-5.5",
+        run_id="judge0000new", model="anthropic/claude-haiku-5.5", judge_model=routed
+    )
+    new["started_at"], new["finished_at"] = "2026-10-01T00:00:00Z", "2026-10-01T00:00:01Z"
+    old = _judged_report(
+        run_id="judge0000old", model="anthropic/claude-haiku-5.5", judge_model=None
     )
     client.post(f"/projects/{project['id']}/runs", json=new, headers=h)
-    client.post(f"/projects/{project['id']}/runs", json=old, headers=h)  # ingested last
+    client.post(f"/projects/{project['id']}/runs", json=old, headers=h)  # finishes later
     judges = client.get(f"/projects/{project['id']}/judges", headers=h).json()
-    assert [j["model"] for j in judges] == ["openrouter/anthropic/claude-haiku-5.5"]
-    for res in new["results"]:
+    assert [j["model"] for j in judges] == [routed]
+    for res in old["results"]:  # the latest verdict per output is the old library's
         _label(client, project, res, passed=True)
     cal = client.post(
         f"/projects/{project['id']}/calibrations", json={"check_key": "helpful"}, headers=h
     ).json()
-    assert cal["status"] == "done" and cal["model"] == "openrouter/anthropic/claude-haiku-5.5"
+    assert cal["status"] == "done" and cal["model"] == routed
+
+    legacy = _judged_report(run_id="judge00legacy", jv="0000000000legacy", judge_model=None)
+    for res in legacy["results"]:
+        res["check_key"] = "concise"
+    client.post(f"/projects/{project['id']}/runs", json=legacy, headers=h)
+    by_key = {
+        j["check_key"]: j for j in client.get(f"/projects/{project['id']}/judges", headers=h).json()
+    }
+    assert by_key["concise"]["model"] is None  # nothing routable: the web hides Promote
+
+
+def test_a_non_string_judge_model_is_not_stamped(client, project, db):
+    from app.models import RunResult
+
+    report = _judged_report(judge_model=None)
+    for res in report["results"]:
+        res["score"]["raw"]["judge_model"] = {"provider": "openrouter"}
+    client.post(f"/projects/{project['id']}/runs", json=report, headers=project["headers"])
+    assert {r.judge_model for r in db.query(RunResult).all()} == {None}

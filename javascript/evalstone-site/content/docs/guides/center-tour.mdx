@@ -110,9 +110,8 @@ Three cards.
   overrides for that check; the next attached run judges with it. Members
   and above request calibrations; the provider behind the model must be one of
   the organization's, or Promote is refused. Results pushed by a library older
-  than 0.2.3 record only the provider's own model id (for example
-  `claude-haiku-5-5`), which Promote cannot route: re-run the suite with 0.2.3+
-  and calibrate again.
+  than 0.2.3 do not record the routed model, so a judge version seen only from
+  them shows no model and offers no Promote: re-run the suite with 0.2.3+.
 
 ## Providers
 

@@ -96,7 +96,8 @@ class RunResult(TimestampedModel):
     output: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     # the library's output hash of `output` — what labels are keyed by
     output_hash: Mapped[str] = mapped_column(String(16), nullable=False)
-    # stamped from score.raw for judge verdicts (rubric+scale+model hash, provider-reported model)
+    # stamped from score.raw for judge verdicts: rubric+scale+model hash, and the routed
+    # `<provider>/<model>` (raw.judge_model, lib >= 0.2.3; NULL for older libraries)
     judge_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
     judge_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
     score: Mapped[float] = mapped_column(Float, nullable=False)

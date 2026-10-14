@@ -19,13 +19,12 @@ real calibration.
   verdict was routed through (for example `openrouter/anthropic/claude-haiku-5.5`), next to
   `raw.model`, the id the provider reported (`anthropic/claude-haiku-5.5`). Verdicts served
   from the cache carry it too.
-- The center stamps `judge_model` at ingest (falling back to `raw.model` for older
-  libraries), so the Judges page, calibrations and **Promote** use the routed model. Before,
-  Promote sent the provider-reported id, which judge settings reject (`no provider named
-  'anthropic'`) or, when a provider of that name existed, route elsewhere.
-- When one judge version has results from both an older and a newer library, the Judges
-  page and calibrations show the stamp of the most recent verdict (by run finish time)
-  instead of the alphabetically smallest, so an upgrade takes effect on the next run.
+- The center stamps only `raw.judge_model`, so the Judges page, calibrations and **Promote**
+  use the routed model. Before, it stamped `raw.model`, and Promote sent that
+  provider-reported id, which judge settings reject (`no provider named 'anthropic'`) or,
+  when a provider of that name existed, route elsewhere. Results pushed by an older library
+  are no longer stamped (a migration clears the old stamps): a version seen only from them
+  shows no model and cannot be promoted until a 0.2.3+ run pushes it.
 
 ## 0.2.2 — 2026-10-14
 
