@@ -12,11 +12,11 @@ and an LLM judge you have measured against people in one center.
 ```bash
 pip install evalstone
 evalstone init          # a starter evalstone.yaml, a golden set, recorded outputs, a custom check
-evalstone run nightly   # the results table + a JSON report
-evalstone gate nightly  # exits 1 when the gate fails: that is your CI step
+evalstone run nightly   # the results table + a JSON report, to look at
+evalstone gate nightly  # runs the suite itself and exits 1 when the gate fails: the CI step
 ```
 
-**Learn evals:** [Evals 101](https://evalstone.com/docs/learn) · **Docs:** [evalstone.com](https://evalstone.com)
+**Learn evals:** [Evals 101](https://evalstone.com/docs/learn) · **Docs:** [evalstone.com/docs](https://evalstone.com/docs)
 · **Try the center:** [app.evalstone.com](https://app.evalstone.com) (the demo login is on the
 [Center page](https://evalstone.com/docs/evalstone/center))
 
@@ -34,8 +34,9 @@ evalstone gate nightly  # exits 1 when the gate fails: that is your CI step
 
 > **Status:** the library is on PyPI (CLI, MCP server, pytest plugin, terminal labeling), the
 > GitHub Action is `marceloribeiro/evalstone/action@action-v0`, and the center is live at
-> [app.evalstone.com](https://app.evalstone.com) or self-hosted with `docker compose`
-> ([`QUICK_START.md`](QUICK_START.md)). See the [roadmap](docs/ROADMAP.md).
+> [app.evalstone.com](https://app.evalstone.com). To self-host, `docker compose` runs the
+> center API, worker and scheduler ([`QUICK_START.md`](QUICK_START.md)); the web app runs from
+> [`javascript/evalstone-web`](javascript/evalstone-web). See the [roadmap](docs/ROADMAP.md).
 
 ## What it is
 
@@ -76,8 +77,8 @@ no database; the center API is the sole owner of PostgreSQL.
 | --- | --- |
 | Site | `cd javascript/evalstone-site && just install && just check && just test` |
 | Library | `cd python/evalstone && just install && just check` |
-| Center API | `cd python/evalstone-api && just install && just up` (Postgres + Redis running natively; Celery: `just workers`, `just beat`; `just check` = lint + tests) |
-| Center web | `cd javascript/evalstone-web && just install && just up` (dev server on :8182, needs the API's `just up`; `just check` = lint + types, `just test` = Playwright) |
+| Center API | `cd python/evalstone-api && cp .env.example .env && just install && just services-check && just db-create-all && just db-migrate-all && just up` — Postgres + Redis run natively; Celery: `just workers`, `just beat`; `just check` = lint + tests (on `evalstone_api_test`). Details: [its README](python/evalstone-api/README.md) |
+| Center web | `cd javascript/evalstone-web && cp .env.example .env.local && just install && just up` — dev server on :8182 against `NEXT_PUBLIC_API_URL` (default the API on :8181); `just check` = lint + types, `just test` = Playwright. Details: [its README](javascript/evalstone-web/README.md) |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
 
