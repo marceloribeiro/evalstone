@@ -227,5 +227,65 @@ export type Calibration = {
   created_at: string;
 };
 
+/** `CheckOut` — an organization catalog check (type + params, versioned). */
+export type CatalogCheck = {
+  id: string;
+  organization_id: string;
+  key: string;
+  type: string;
+  kind: string;
+  params: Record<string, unknown>;
+  description: string;
+  current_version: number;
+  created_at: string;
+  updated_at: string;
+};
+export type AlertPolicy = { metric: "pass_rate" | "mean_score"; threshold: number; window_minutes: number; min_n: number };
+/** `MonitorOut` — sampled production traces scored by catalog checks on the beat, with an alert policy. */
+export type Monitor = {
+  id: string;
+  project_id: string;
+  name: string;
+  check_keys: string[];
+  sample_rate: number;
+  alert_policy: AlertPolicy;
+  webhook_url: string | null;
+  status: "active" | "paused";
+  last_scored_at: string | null;
+  last_error: string | null;
+  created_at: string;
+};
+export type MonitorWindow = { n: number; pass_rate: number | null; mean_score: number | null; window_minutes: number };
+/** `AlertOut` — a policy breach, open until the metric is back at/above the threshold. */
+export type Alert = {
+  id: string;
+  monitor_id: string;
+  metric: string;
+  value: number;
+  threshold: number;
+  n: number;
+  window_minutes: number;
+  opened_at: string;
+  resolved_at: string | null;
+  notified_at: string | null;
+  notify_error: string | null;
+};
+/** `TraceOut` — one production interaction pushed by the app. */
+export type Trace = {
+  id: string;
+  client_id: string;
+  input: unknown;
+  output: unknown;
+  output_hash: string;
+  metadata: Record<string, unknown>;
+  tags: string[];
+  model: string | null;
+  latency_ms: number | null;
+  cost_usd: number | null;
+  occurred_at: string;
+  flagged: boolean;
+  sample_bucket: number;
+};
+
 /** A frame from GET /ws/projects/{id}: {"event": "...", "project_id": "...", "at": "...", ...}. */
 export type LiveEvent = { event: string; project_id?: string; at?: string } & Record<string, unknown>;

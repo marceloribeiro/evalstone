@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +15,8 @@ import { KIND_LABEL } from "@/lib/labeling";
 import { Stat } from "@/components/common/Stat";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useLoader } from "@/hooks/useLoader";
-import { api, errorMessage } from "@/lib/api";
+import { api } from "@/lib/api";
+import { useAction } from "@/hooks/useAction";
 import { when } from "@/lib/format";
 import { isAdmin } from "@/lib/roles";
 import type { LabelQueue, LabelTask, Member, Page, QueueProgress } from "@/lib/types";
@@ -32,7 +32,7 @@ export function QueueDetail({ queueId }: { queueId: string }) {
   const [offset, setOffset] = useState(0);
   const tasks = useLoader(() => api<Page<LabelTask>>(`/projects/${project!.id}/label-queues/${queueId}/tasks`, { query: { offset, limit: LIMIT } }), [project?.id, queueId, offset]);
   const [picked, setPicked] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
+  const { busy, act: run } = useAction();
   const [confirmUnassign, setConfirmUnassign] = useState(false);
   if (!organization || !project) return null;
   const base = `/o/${organization.id}/p/${project.id}`;
@@ -62,19 +62,11 @@ export function QueueDetail({ queueId }: { queueId: string }) {
     tasks.reload();
   };
 
-  const act = async (label: string, fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-      toast.success(label);
+  const act = (label: string, fn: () => Promise<unknown>) =>
+    run(label, fn, () => {
       setConfirmUnassign(false);
       refresh();
-    } catch (err) {
-      toast.error(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
   const setStatus = (status: "open" | "closed") => act(status === "open" ? "Queue reopened" : "Queue closed", () => api(`/projects/${project.id}/label-queues/${q.id}`, { method: "PATCH", body: { status } }));
   const assign = () => act(`Assigned to ${picked.length} member${picked.length === 1 ? "" : "s"}`, () => api(`/projects/${project.id}/label-queues/${q.id}/assign`, { method: "POST", body: { user_ids: picked } }));
   const unassign = () => act("Unassigned every pending task", () => api(`/projects/${project.id}/label-queues/${q.id}/unassign`, { method: "POST", body: { user_ids: null } }));
