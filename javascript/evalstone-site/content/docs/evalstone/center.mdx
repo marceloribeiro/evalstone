@@ -33,6 +33,16 @@ proxy with the organization's provider keys (no key on the machine), verdicts ar
 in the center, and `human` checks look labels up there. Prompt targets — the system under
 test — still use your local `providers:`.
 
+`url` and `project` are required; the other five keys (`api_key_env`, `timeout`,
+`cache_timeout`, `push_runs`, `cache`) have defaults and are listed, with what changes
+when attached and which model a judge picks, in the
+[config reference](/docs/reference/config#center).
+
+Which runs reach the center: `evalstone run` pushes (unless `push_runs: false`), and a
+failed push warns without changing the exit code. The pytest plugin and the MCP server's
+`run_suite` never push — they write the local JSON report only; the judges and the cache
+still go through the center.
+
 ## What the web app shows
 
 - **Project home** — the attach snippet, ingest keys, a live feed of events, the latest runs.
@@ -41,7 +51,7 @@ test — still use your local `providers:`.
 - **Datasets** — immutable content-hashed versions, a sample viewer, the diff between two
   versions, tags.
 - **Labeling** — queues to grade outputs, compare two runs A/B, or verify a dataset's
-  expected answers; assignment; a keyboard-driven labeler (digits, P/F, A/B/T, S, Enter).
+  expected answers; assignment; a keyboard-driven labeler (shortcuts below).
 - **Judges** — the organization's providers (keys write-only), the project's judge
   settings, every judge version seen in results, calibrations against human labels
   (agreement, Cohen's kappa, confusion), and *Promote* to make a calibrated judge the
@@ -51,6 +61,13 @@ test — still use your local `providers:`.
 - **Check catalog** — checks defined once per organization from the library's built-in
   types, versioned, exported as the `checks:` block of an `evalstone.yaml`.
 - **Members, invitations, project settings.**
+
+### Labeler shortcuts
+
+The labeler claims the next task in the queue and takes the verdict from the keyboard
+while nothing else has focus: digits grade (`0` is 10), `P`/`F` pass or fail, `A`/`B`/`T`
+pick a side or a tie, `Enter` submits, `N` opens the notes, `S` twice skips. The full
+table, per queue type, is in [the center, page by page](/docs/guides/center-tour#the-labeler).
 
 ## API
 

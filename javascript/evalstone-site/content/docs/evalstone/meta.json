@@ -1,5 +1,5 @@
 {
   "title": "Evalstone",
   "description": "How Evalstone helps",
-  "pages": ["index", "concepts", "how-it-works", "library", "center", "mcp", "roadmap"]
+  "pages": ["index", "concepts", "how-it-works", "library", "center", "mcp", "roadmap", "changelog"]
 }

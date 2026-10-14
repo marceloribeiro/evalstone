@@ -2,14 +2,30 @@
 
 All notable changes to `python/evalstone`. Semantic versioning; tags `lib-vX.Y.Z`.
 
+## 0.2.1 — 2026-10-14
+
+Attach fixes found by the docs audit.
+
+- `comparison.pairwise` built its check version (and so its cache key) from
+  `--judge-model` or the check's own `model:`, ignoring the attached project's
+  per-check override — the call itself already honoured it. Both now resolve through
+  the same precedence (`--judge-model` > center override > `model:` > default), so a
+  verdict cached under the override is found again and a changed override invalidates
+  the cache.
+- Docstrings and this changelog no longer claim prompt targets are proxied when
+  attached; they never were (`providers:` + env keys serve the system under test).
+- Known limitation, documented: when attached, `--judge-model some-typo/model` is
+  not validated up front — the center only rejects the provider at the first judge
+  call, which surfaces as an errored score. Standalone runs still fail fast.
+
 ## 0.2.0 — 2026-10-14
 
 Attach a project to a center.
 
 - `center:` in `evalstone.yaml` (`url`, `project`, `api_key_env` — an `es_…` ingest key)
-  routes judge and prompt-target calls through the center's model proxy, so no provider
-  key lives on the machine running the suite; the project's judge settings pick the
-  model (per-check overrides, then the default), `--judge-model` still wins.
+  routes judge calls through the center's model proxy, so no judge key lives on the
+  machine running the suite; the project's judge settings pick the model (per-check
+  overrides, then the default), `--judge-model` still wins.
 - Judge verdicts are cached in the center (`CenterCache`); a center hiccup is a cache
   miss, never a failed run.
 - `human` checks of an attached project look labels up in the center (`labels: center`,

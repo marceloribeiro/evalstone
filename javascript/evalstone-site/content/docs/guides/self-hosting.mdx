@@ -1,0 +1,99 @@
+---
+title: Self-hosting the center
+description: Run your own center — the API, its worker and beat, PostgreSQL with pgvector, Redis, and the web app — on one machine or behind nginx.
+---
+
+The hosted center is `app.evalstone.com`. The same code runs anywhere: the API
+is a FastAPI service with a Celery worker and a Celery beat, on PostgreSQL 16
+with `pgvector` and Redis; the web app is a standalone Next.js build that only
+needs the API's URL. Everything below is in the
+[repository](https://github.com/marceloribeiro/evalstone) under
+`python/evalstone-api` and `javascript/evalstone-web`.
+
+## The quick way: Docker Compose
+
+`QUICK_START.md` at the repository root is the baby-fed version. In short:
+
+```bash
+git clone https://github.com/marceloribeiro/evalstone.git && cd evalstone
+cp env.docker.example .env        # fill in the four required values (generators are in the file)
+docker compose up -d --build      # api · worker · beat · postgres · redis
+curl -s localhost:8181/ready
+```
+
+The `api` container waits for Postgres, runs `alembic upgrade head` (the
+`pgvector` extension included) and starts uvicorn on 8181; `worker` and
+`beat` wait for the database and start Celery. Upgrading is
+`git pull && docker compose up -d --build`; the database lives in the
+`postgres-data` volume, and `docker compose down -v` deletes it.
+
+## Environment
+
+The API reads `.env`. Outside `APP_ENV=development|test` it **refuses to
+start** when `JWT_SECRET` or `DOCS_PASSWORD` is empty or still the published
+default, when `PROVIDER_CREDS_KEY` is missing or not a Fernet key, or when
+`REDIS_KEY_PREFIX` is set to an empty string. `DB_PASS` is **not** checked at
+startup: left empty, the API connects without a password and the mistake
+surfaces as a `503` from `/ready` (or the first query).
+
+| Variable | What |
+| --- | --- |
+| `DB_PASS` | the PostgreSQL password (with `DB_USER`, `DB_HOST`, `DB_PORT`, `DB_NAME`) |
+| `JWT_SECRET` | signs sessions; at least 32 bytes — `python3 -c 'import secrets; print(secrets.token_urlsafe(48))'` |
+| `PROVIDER_CREDS_KEY` | a Fernet key that encrypts every provider API key the organizations store. **Set it once and never change it**: rotating it makes every stored key undecryptable |
+| `DOCS_PASSWORD` | with `DOCS_USERNAME` (default `evalstone`), the HTTP basic auth in front of `/docs` and `/openapi.json` |
+| `REDIS_KEY_PREFIX` | the namespace for every Celery key; default `evalstone:`, give each app its own when they share a Redis index — an unprefixed queue is consumed by whichever worker gets there first, so an explicitly empty value refuses to start |
+
+The rest has defaults: `APP_PORT` (8181), `REDIS_URL` /
+`CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` (one Redis index), `CORS_ORIGINS`
+(comma-separated; the web app's origin goes here), `JWT_EXPIRES_MINUTES`
+(10080), `PROVIDER_ALLOW_PRIVATE_URLS` (`true` when a provider's base URL is a
+private host, an Ollama next to the center say), `PROVIDER_TEST_TIMEOUT_S`.
+The full list with comments is `python/evalstone-api/.env.example`.
+
+The web app has one variable, inlined at build time:
+`NEXT_PUBLIC_API_URL=https://api.example.com`.
+
+## Natively, on a server
+
+What the hosted center does, in order.
+
+1. **PostgreSQL 16 with pgvector**: one role and one database for the API;
+   `alembic upgrade head` from `python/evalstone-api` with the `.env` in place.
+2. **Three processes**, each a systemd unit (templates in
+   `python/evalstone-api/app/support/systemd/`): the API
+   (`uvicorn app.main:app --host 127.0.0.1 --port 8181`), the worker
+   (`celery -A app.worker.celery_app worker`), and beat
+   (`celery -A app.worker.celery_app beat`) — beat scores the active monitors
+   every minute and runs the heartbeat, so alerts stop when it does.
+3. **nginx** in front (`python/evalstone-api/nginx/nginx-https.conf`): a
+   plain `location /` proxy, plus a `location ~ ^/ws(/|$)` that forwards the
+   WebSocket upgrade (`Upgrade` / `Connection $connection_upgrade`, buffering
+   off, long timeouts) — the live feed, alerts and run streams ride on it.
+   `/docs` is already behind basic auth in the app, so nothing extra there.
+4. **The web app**: `npm run build` with `NEXT_PUBLIC_API_URL` set produces a
+   standalone server (`node server.js`, port 8182 in the shipped unit
+   `javascript/evalstone-web/systemd/evalstone-web.service`); its nginx
+   config is `javascript/evalstone-web/nginx/`. Add its origin to the API's
+   `CORS_ORIGINS`.
+5. **TLS** with Let's Encrypt on both hosts; the API's `nginx-http.conf`
+   serves the ACME challenge first.
+
+`just deploy` in each app's folder is how the hosted instance is shipped
+(clone-on-server for the API, local build + rsync for the web app); its
+`deploy.json` names the server and the deploy location.
+
+## Operating it
+
+- **Backups**: the whole state is the one PostgreSQL database (plus the
+  Fernet key in `.env`). Dump it nightly; a restore into an empty database
+  followed by `alembic upgrade head` is the recovery.
+- **Upgrading**: pull, `alembic upgrade head`, restart the three units — the
+  worker after the API, because new Celery tasks are only known to a
+  restarted worker.
+- **Health**: `GET /health` (process up, touches nothing) and `GET /ready`
+  (503 naming PostgreSQL or Redis when one is unreachable). Logs go where the
+  units say (`logs/api.log` and friends under the deploy location).
+- **The library** attaches to your center exactly as to the hosted one: the
+  `center.url` is yours, the ingest key comes from your project's Overview
+  page. [Attach a project](/docs/evalstone/center).

@@ -4,21 +4,67 @@ description: Every evalstone command and option.
 ---
 
 ```
-evalstone [--version] COMMAND
+evalstone [--version | -V] COMMAND
 ```
 
 | Command | What |
 | --- | --- |
-| `init [directory] [--project NAME]` | create a starter `evalstone.yaml`, `evals/golden.jsonl`, `evals/outputs.jsonl`, `evals/checks.py`; refuses to overwrite anything |
+| `init [directory] [--project NAME]` | create a starter `evalstone.yaml`, `evals/golden.jsonl`, `evals/outputs.jsonl`, `evals/checks.py` and `evals/__init__.py`; refuses to overwrite anything |
 | `list [--config PATH]` | datasets, configured checks, `@check`-registered checks, suites |
-| `run SUITE [--config] [--report PATH] [--baseline PATH] [--failures N] [--strict] [--judge-model P/M]` | run a suite, print the table, failing results and gate lines, write the JSON report; `--strict` exits 1 on a failed gate; `--judge-model` overrides every judge's model for this run |
-| `gate SUITE [--config] [--report] [--baseline] [--judge-model P/M]` | `run --strict`: exit 1 when the gate fails |
+| `run SUITE [--config] [--report PATH] [--baseline PATH] [--failures N] [--strict] [--judge-model P/M]` | run a suite, print the table, failing results and gate lines, write the JSON report, push it to the center when attached; `--strict` exits 1 on a failed gate; `--judge-model` overrides every judge's model for this run |
+| `gate SUITE [--config] [--report] [--baseline] [--judge-model P/M]` | `run --strict` that lists the first 10 failures: exit 1 when the gate fails (no `--failures`) |
 | `compare A B` | regressions, improvements, metric deltas between two reports; exit 1 when there are regressions |
 | `show REPORT [--failures N] [--markdown]` | print a saved report as a table, or as GitHub markdown |
 | `label REPORT [--out PATH] [--scale pass\|N] [--check KEY] [--labeler NAME] [--limit N]` | grade a run's outputs by hand into a labels JSONL (resumable) |
 | `mcp [--config]` | serve the project's evals to an MCP client over stdio |
 
-Exit codes: `0` ok · `1` gate failed (`gate`, `run --strict`) or regressions (`compare`) · `2` configuration or input problem (message on stderr).
+Short flags: `-c` config, `-r` report, `-b` baseline, `-o` label output, `-p`
+init project name, `-V` version. `--failures` defaults to 10 (`0` prints none).
 
-Environment: provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, or the
-names set under `providers:` in the config).
+## Reports
+
+`run` writes the report to `--report`, else to the `report:` key of the config
+(default `evalstone-report.json`), resolved **relative to the config file's
+directory**, and prints `report → <path>`. `show`, `compare`, `label` and the
+GitHub Action read that file.
+
+## When the project is attached to a center
+
+With a `center:` block in `evalstone.yaml` (see
+[evalstone.yaml](/docs/reference/config#center)), `run` and `gate` also:
+
+- **push the report** after writing it and print
+  `center → run <id> stored (<url>)` — or `already stored` when the center has
+  seen this run id before (a retry). `push_runs: false` opts out. A failed push
+  prints a yellow `center: run not pushed — …` warning on stderr and **leaves the
+  exit code alone**: the gate verdict is the gate verdict.
+- **read and write judge verdicts in the center cache**; when cache requests fail
+  the run still completes and ends with a warning
+  (`center cache: N request(s) failed … judges paid for those verdicts`).
+- **exit 2 before running anything** when the key named by `api_key_env`
+  (default `EVALSTONE_API_KEY`) is missing, or the center rejects it or is
+  unreachable while the suite is being built.
+
+`--judge-model` is validated against the **local** `providers:` registry when
+standalone (an unknown provider is exit 2 with a message). Attached, the center
+proxy accepts any `<provider>/<model>` name at startup and only rejects it per
+call, so a typo surfaces as errored results — and, with the default
+`max_error_rate: 0`, a failed gate — not as an early exit.
+
+`label` always writes a **local** JSONL file (`--out`, default `labels.jsonl`
+in the working directory; `--labeler` defaults to `$USER`), attached or not.
+Import it into the center with `POST /projects/{id}/labels` (see
+[Center API](/docs/reference/center-api#labels)) or grade in the center's
+labeling queues instead.
+
+## Exit codes and environment
+
+Exit codes: `0` ok · `1` gate failed (`gate`, `run --strict`) or regressions
+(`compare`) · `2` configuration or input problem — a missing file, an invalid
+YAML or report, an unknown suite or `--judge-model` provider, a missing
+`EVALSTONE_API_KEY` or an unreachable center (message on stderr).
+
+Environment: provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+or the names set under `providers:` in the config) for standalone judges and for
+`prompt` targets; `EVALSTONE_API_KEY` (or the name set by `center.api_key_env`)
+holding an `es_…` ingest key when attached.

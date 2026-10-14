@@ -79,7 +79,9 @@ Repeat when the judge model is upgraded.
 ## Control the cost
 
 - **Temperature 0** and a **cache** keyed on (judge version, input, output).
-  Re-running a suite where 90% of outputs did not change costs 10%.
+  Re-running a suite where 90% of outputs did not change costs 10%. (Evalstone's
+  judges leave temperature at the provider's default — current Claude models
+  reject sampling parameters — and lean on the cache and the small scale.)
 - **Deterministic checks first.** An output that fails the JSON schema does
   not need a $0.002 judgement of its tone.
 - **Small judge models** are fine for narrow rubrics once calibrated. Use

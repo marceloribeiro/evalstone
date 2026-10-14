@@ -145,6 +145,10 @@ def run(
     if judge_model is not None:
         try:
             registry = cfg.provider_registry()
+        except CenterError as exc:  # attached without a key: the center, not the flag
+            err.print(f"[red]{escape(str(exc))}[/red]")
+            raise typer.Exit(2) from None
+        try:
             registry.get(registry.split(judge_model)[0])
         except ProviderError as exc:
             err.print(f"[red]--judge-model: {escape(str(exc))}[/red]")

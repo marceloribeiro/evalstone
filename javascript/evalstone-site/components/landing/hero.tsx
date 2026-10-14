@@ -19,7 +19,7 @@ suite = es.Suite(
 )
 
 run = suite.run(target=answer)   # your function
-run.gate()                       # non-zero exit in CI`;
+suite.enforce(run)               # raises GateFailed → red in CI`;
 
 export function Hero() {
   return (

@@ -1,0 +1,163 @@
+---
+title: Center API
+description: The center endpoints the library, CI and your app call — keys, runs, baselines, labels, calibrations, traces and monitors.
+---
+
+The center is a FastAPI service; the full OpenAPI document with every field
+lives at [api.evalstone.com/docs](https://api.evalstone.com/docs) (a
+self-hosted center serves the same at `/docs`). This page is the short list of
+what you call from outside the web app. Every path below is relative to the
+API base URL (`https://api.evalstone.com`); `{project_id}` is the project's
+uuid, `{organization_id}` the organization's.
+
+## Authentication
+
+Two credentials exist:
+
+| Credential | Looks like | Who | Where it works |
+| --- | --- | --- | --- |
+| **Ingest key** | `es_…` | the library, CI, your app | the data plane: runs, datasets, judge cache, labels, traces, the model proxy, `judge-settings` |
+| **User token** | a JWT from `POST /auth/login` | a person (or the web app) | everything the person's role allows |
+
+Both go in `Authorization: Bearer <value>`. Ingest keys are minted on the
+project's Settings page by an organization admin
+(`POST /projects/{project_id}/ingest-keys` with `{"name": "ci"}`); the plaintext
+is returned **once**, the center keeps a hash and a prefix. Revoke with
+`DELETE /projects/{project_id}/ingest-keys/{key_id}`. A key is bound to one project:
+calling another project's path with it is a 404, as if the project did not exist.
+
+```bash
+curl -H "Authorization: Bearer $EVALSTONE_API_KEY" https://api.evalstone.com/ingest/whoami
+# → {"id": "…", "organization_id": "…", "name": "support-bot", "slug": "support-bot", …}
+```
+
+`GET /ingest/whoami` is the smoke test: it answers with the project the key
+belongs to, or 401.
+
+## Runs and baselines
+
+| Method · path | Body / result |
+| --- | --- |
+| `POST /projects/{project_id}/runs` | body = a library report (`evalstone-report.json`, verbatim); **201** when new, **200** with the stored run when that client run id was already pushed (retries are safe). This is what `evalstone run` does when attached. |
+| `GET /projects/{project_id}/runs?suite=…&baseline=true` | paged runs, optionally one suite or only the current baselines; `GET …/runs/suites` lists the suites seen |
+| `GET /projects/{project_id}/runs/{run_id}` · `…/results` · `…/report` | the run, its paged results, the original report |
+| `GET /projects/{project_id}/runs/{run_id}/compare/{other_id}` | the same diff as `evalstone compare` |
+| `PUT /projects/{project_id}/runs/{run_id}/baseline` | `{"is_baseline": true}` (default) marks this run as **the** baseline of its suite — one per suite, the previous one is unmarked; `false` unmarks. Member role or above (a user token, not an ingest key). |
+
+The web app's runs page has a "Set as baseline" button that calls the `PUT`.
+
+## Judge settings and the model proxy
+
+| Method · path | Body / result |
+| --- | --- |
+| `GET /projects/{project_id}/judge-settings` | `{"project_id", "default_model", "overrides": {"<check key>": "<provider>/<model>"}}` — what an attached library reads at startup |
+| `PUT /projects/{project_id}/judge-settings` | the same shape, admin only; the Judges page edits it |
+| `POST /projects/{project_id}/model/complete` | the judge proxy: a chat request without a key, answered with the organization's provider credentials; `GET …/model/calls` and `…/model/usage` show the ledger |
+| `GET` / `PUT /projects/{project_id}/judge-cache/{key}` · `POST …/judge-cache/lookup` | the verdict cache the library reads and writes (`{"score": …, "judge_version": …}`) |
+
+## Labels
+
+The center stores one label per `(sample, output hash, check)`; the latest
+write wins. Labels arrive from the web app's labeling queues or from a local
+`labels.jsonl`.
+
+| Method · path | Body / result |
+| --- | --- |
+| `POST /projects/{project_id}/labels` | `{"labels": [ …lines of a labels.jsonl… ]}` — each line is the library's `Label` (`sample_id`, `output_hash`, `value` 0..1, `passed`, `notes`, `check`, `labeler`, `raw`); up to 5000 per call; result `{"upserted": N}` |
+| `GET /projects/{project_id}/labels` | paged labels |
+| `GET /projects/{project_id}/labels/export` | every live label as NDJSON (`Content-Disposition: labels.jsonl`) — a drop-in file for `human` checks run standalone |
+| `GET /projects/{project_id}/labels/lookup?sample_key=…&output_hash=…[&check=…]` | one label or 404 — what `labels: center` asks at run time |
+| `DELETE /projects/{project_id}/labels/{label_id}` | remove one (admin) |
+
+```bash
+# push what `evalstone label` wrote
+jq -s '{labels: .}' labels.jsonl | curl -X POST -H "Authorization: Bearer $EVALSTONE_API_KEY" \
+  -H 'Content-Type: application/json' -d @- https://api.evalstone.com/projects/$PROJECT/labels
+
+# pull everything graded in the center
+curl -H "Authorization: Bearer $EVALSTONE_API_KEY" \
+  https://api.evalstone.com/projects/$PROJECT/labels/export > evals/labels.jsonl
+```
+
+## Calibrations
+
+A calibration compares a judge's verdicts with the human labels for the same
+`(sample, output)` pairs and reports agreement, Cohen's kappa, mean absolute
+error and a confusion table.
+
+| Method · path | Body / result |
+| --- | --- |
+| `POST /projects/{project_id}/calibrations` | `{"check_key": "helpful", "judge_version": "<16 hex>" (optional: the latest seen when omitted), "label_check": "" (the overall grade) or a rubric key}`; **202** with the row, `status` `queued` → `running` → `done` or `failed` (`error` says why); a check with no judge verdicts yet is a 422 |
+| `GET /projects/{project_id}/calibrations` · `…/{calibration_id}` | list, or poll one; `n`, `agreement`, `kappa`, `mean_abs_error`, `confusion` |
+| `GET /projects/{project_id}/judges` | every judge (check key × version) the center has verdicts for |
+
+Member role or above. The Judges page runs calibrations and, from a
+calibration, lets an admin **promote** the judge version into the project's
+per-check override (the `PUT /projects/{project_id}/judge-settings` above).
+
+## Traces, monitors and alerts
+
+Production traffic goes in with the ingest key; a **monitor** scores a sample
+of it with checks from the organization's catalog and opens an **alert** when
+a windowed metric drops below a threshold.
+
+```bash
+curl -X POST -H "Authorization: Bearer $EVALSTONE_API_KEY" -H 'Content-Type: application/json' \
+  https://api.evalstone.com/projects/$PROJECT/traces -d '{
+  "traces": [{
+    "id": "req-8f3a",
+    "input": {"question": "Can I return a gift?"},
+    "output": "Yes — within 30 days with the receipt.",
+    "metadata": {"route": "/answer"}, "tags": ["returns"],
+    "model": "anthropic/claude-haiku-5-5", "latency_ms": 812, "cost_usd": 0.0004,
+    "occurred_at": "2026-10-14T09:12:00Z"
+  }]
+}'
+# → {"stored": 1}
+```
+
+`id` is your own request id: a retry carrying the same `id` is stored once.
+
+| Method · path | Body / result |
+| --- | --- |
+| `POST /projects/{project_id}/traces` | `{"traces": [TraceIn, …]}`, up to 1000 per call; only `input` is required; result `{"stored": N}` (duplicates by `id` are not counted twice) |
+| `GET /projects/{project_id}/traces` | paged traces (`flagged`, `sample_bucket`, `output_hash` included) |
+| `POST /projects/{project_id}/traces/{trace_id}/flag` | `{"flagged": true}` marks a trace for harvesting into a dataset (a person's call; member role) |
+| `POST /projects/{project_id}/monitors` | `{"name", "check_keys": ["<catalog key>", …] (max 20), "sample_rate": 0.1, "alert_policy": {"metric": "pass_rate" \| "mean_score", "threshold": 0..1, "window_minutes": 60, "min_n": 20}, "webhook_url": null}`; admin |
+| `PATCH` / `DELETE /projects/{project_id}/monitors/{monitor_id}` | edit (incl. `"status": "paused"`, which resolves its open alerts) or delete; admin |
+| `GET /projects/{project_id}/monitors/{monitor_id}/window` | `{"n", "pass_rate", "mean_score", "window_minutes"}` over the policy window |
+| `POST /projects/{project_id}/monitors/{monitor_id}/score` | score now instead of waiting for the next minute; admin |
+| `GET /projects/{project_id}/alerts?open=true` | alerts, newest first |
+
+Every minute the center scores the unscored traces whose stable sample bucket
+falls under `sample_rate` (deterministic checks in-process, judges through the
+project's judge settings), evaluates the policy over the last `window_minutes`
+once at least `min_n` traces are scored, opens an alert when the metric is below
+`threshold`, and resolves it when the window is back at or above. A new alert
+POSTs this JSON to `webhook_url` (an `http(s)` URL with a resolvable public host and no embedded
+credentials — checked at save time); delivery failures land in the alert's `notify_error`:
+
+```json
+{
+  "event": "evalstone.alert.opened",
+  "alert_id": "…", "monitor": {"id": "…", "name": "prod answers"}, "project_id": "…",
+  "metric": "pass_rate", "value": 0.83, "threshold": 0.9,
+  "n": 24, "window_minutes": 1440, "opened_at": "2026-10-14T09:13:00Z"
+}
+```
+
+## Check catalog
+
+Organization-wide check definitions (the same `type:` + kwargs as a
+`checks:` block) that monitors reference by key and the web app edits with
+versions.
+
+| Method · path | Result |
+| --- | --- |
+| `GET /catalog/checks` | the built-in types and their parameters (what the editor's form is built from) |
+| `GET /organizations/{organization_id}/checks` · `…/{check_id}` · `…/{check_id}/versions` | the catalog, one check, its version history |
+| `GET /organizations/{organization_id}/checks/yaml` | `{"checks": {…}}` — the catalog as the `checks:` block of an `evalstone.yaml`, ready to paste |
+| `POST` / `PUT` / `DELETE /organizations/{organization_id}/checks[/{check_id}]` | create, update (a new version), delete; admin |
+
+Catalog routes take a user token (members read, admins write), not an ingest
+key.

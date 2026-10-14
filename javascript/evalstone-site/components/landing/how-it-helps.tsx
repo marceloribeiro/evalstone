@@ -21,8 +21,8 @@ export function HowItHelps() {
           RAG, safety, pairwise and agent-trajectory checks built in.
         </FeatureCard>
         <FeatureCard icon={<Users className="size-5" />} title="Training center" href="/docs/evalstone/center" status="live">
-          Versioned golden sets harvested from real traffic, a human labeling queue, and judge
-          calibration so your LLM judge agrees with your people.
+          Versioned golden sets, a human labeling queue, and judge calibration so your LLM judge
+          agrees with your people.
         </FeatureCard>
         <FeatureCard icon={<Scale className="size-5" />} title="Check center" href="/docs/evalstone/center" status="live">
           Run history with baselines and diffs, a catalog of reusable checks, and alerts when a

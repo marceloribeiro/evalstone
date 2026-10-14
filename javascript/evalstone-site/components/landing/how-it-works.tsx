@@ -14,7 +14,9 @@ suites:
 judges:
   default_model: anthropic/claude-haiku-5-5
 center:                      # optional — persists runs in PostgreSQL
-  url: https://api.evalstone.com`;
+  url: https://api.evalstone.com
+  project: <project id>
+  api_key_env: EVALSTONE_API_KEY`;
 
 const STEPS = [
   {
@@ -23,7 +25,7 @@ const STEPS = [
   },
   {
     title: 'Run it anywhere',
-    body: 'evalstone run on your laptop, in pytest, in a GitHub Action, or from an MCP client. The judge scores quality with the model you name, on your key; deterministic and trajectory checks run before it in every suite.',
+    body: 'evalstone run on your laptop, in pytest, in a GitHub Action, or from an MCP client. The judge scores quality with the model you name, on your key or the center\'s; deterministic and trajectory checks run before it in every suite.',
   },
   {
     title: 'Keep the history',

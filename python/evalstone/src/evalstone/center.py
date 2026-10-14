@@ -1,11 +1,13 @@
 """Attach a project to an Evalstone center (``center:`` in evalstone.yaml).
 
-Attached, the library never holds a provider key: judge (and prompt-target) calls go
-through the center's model proxy, which resolves the model from the project's judge
-settings and dials the provider with the organization's key server-side. The judge
-cache lives in the center (one verdict serves every machine), ``human`` checks look
-labels up there, and every ``evalstone run`` pushes its report. ``providers:`` and
-``judges:`` in the YAML remain the standalone path.
+Attached, judge calls go through the center's model proxy, which resolves the model
+from the project's judge settings and dials the provider with the organization's key
+server-side, so no judge key lives on the machine running the suite. Prompt targets
+(the system under test) are NOT proxied: they keep using the local ``providers:`` and
+their env keys. The judge cache lives in the center (one verdict serves every
+machine), ``human`` checks look labels up there, and every ``evalstone run`` pushes
+its report. ``judges:`` in the YAML is ignored while attached; ``providers:`` still
+serves prompt targets.
 """
 
 from __future__ import annotations

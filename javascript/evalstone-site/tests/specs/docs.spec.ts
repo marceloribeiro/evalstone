@@ -68,6 +68,10 @@ const GUIDES_AND_REFERENCE: Array<[string, string]> = [
   ['/reference/cli', 'CLI'],
   ['/reference/config', 'evalstone.yaml'],
   ['/reference/checks', 'Checks catalog'],
+  ['/guides/center-tour', 'The center, page by page'],
+  ['/guides/self-hosting', 'Self-hosting the center'],
+  ['/reference/center-api', 'Center API'],
+  ['/evalstone/changelog', 'Changelog'],
 ];
 
 test.describe('Guides and reference', () => {

@@ -1,5 +1,12 @@
 {
   "title": "Guides",
   "description": "Doing things with Evalstone",
-  "pages": ["quickstart", "ci", "mcp", "labeling"]
+  "pages": [
+    "quickstart",
+    "ci",
+    "mcp",
+    "labeling",
+    "center-tour",
+    "self-hosting"
+  ]
 }

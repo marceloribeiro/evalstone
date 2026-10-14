@@ -8,7 +8,7 @@ import types
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 # Exports resolve on first access (PEP 562) so that importing the package — which
 # the pytest plugin does in every pytest session on the interpreter — costs

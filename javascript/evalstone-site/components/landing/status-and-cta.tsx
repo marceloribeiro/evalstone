@@ -28,7 +28,7 @@ export function StatusAndCta() {
               <p className="mt-1 font-medium">MCP server · pytest · labeling · GitHub Action</p>
             </li>
             <li className="rounded-lg border border-fd-border p-4">
-              <span className="font-mono text-xs text-fd-muted-foreground">next</span>
+              <span className="font-mono text-xs text-pass">live</span>
               <p className="mt-1 font-medium">Center: API + web, self-hosted or hosted</p>
             </li>
           </ol>

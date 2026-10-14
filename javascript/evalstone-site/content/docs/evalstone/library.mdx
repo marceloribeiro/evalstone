@@ -6,7 +6,7 @@ description: The Python API and the evalstone.yaml file. On PyPI.
 <Callout type="info" title="Released">
   `evalstone` is on PyPI: the library, the CLI, the MCP server, the pytest
   plugin and terminal labeling. Versions and changes are in the
-  [changelog](https://github.com/marceloribeiro/evalstone/blob/main/python/evalstone/CHANGELOG.md).
+  [changelog](/docs/evalstone/changelog).
 </Callout>
 
 ## Install
@@ -39,8 +39,8 @@ suite = es.Suite(
 )
 
 run = suite.run(target=my_app.answer)   # callable(sample.input) -> output
-print(run.summary())                     # pass rate, mean score, cost, duration
-run.gate()                               # raises es.GateFailed
+print(run.table())                       # per-check rows + totals (run.summary is the data)
+suite.enforce(run)                       # raises es.GateFailed when the gate fails
 ```
 
 A dataset line in `golden.jsonl`:
@@ -93,7 +93,7 @@ OpenAI-compatible base URL, so OpenRouter, Ollama and vLLM work), `anthropic`,
 ## CLI
 
 ```bash
-evalstone init                 # writes evalstone.yaml + evals/golden.jsonl
+evalstone init                 # writes evalstone.yaml + evals/ (golden.jsonl, outputs.jsonl, checks.py)
 evalstone run nightly          # table + evalstone-report.json
 evalstone compare <run> <run>  # sample-by-sample diff
 evalstone gate nightly         # exit code for CI
@@ -106,8 +106,11 @@ and [checks](/docs/reference/checks) reference pages.
 
 ## Guarantees
 
-- Cheap checks run first; judge calls are concurrent, cached by
-  (judge version, input, output) and priced.
+- Cheap checks run first; judge verdicts are cached by
+  (judge version, input, output) and priced. The cache lives in the process
+  (one run, or one MCP session); attached to a center it lives there, shared
+  across runs and machines.
 - A judge error is `error`, never `pass`; the gate fails above
   `max_error_rate` (default 0).
-- Every run records the dataset version, git SHA, model, cost and duration.
+- Every run records the dataset version, git SHA, cost and duration; each
+  result records the judge version (which includes the model) that scored it.
