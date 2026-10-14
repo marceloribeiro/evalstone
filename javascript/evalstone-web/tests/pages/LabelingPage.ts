@@ -70,8 +70,14 @@ export class LabelingPage {
       .toBe(true);
     const before = await this.currentTaskId();
     for (const k of keys) await this.page.keyboard.press(k);
+    // Non-waiting reads only: between tasks the page shows a skeleton with neither the task nor the
+    // done card, and a waiting `getAttribute` there blocks the poll until it times out (the flake).
     await expect
-      .poll(async () => (await this.page.getByTestId("queue-done").count()) > 0 || (await this.task().getAttribute("data-task-id")) !== before)
+      .poll(async () => {
+        if ((await this.page.getByTestId("queue-done").count()) > 0) return true;
+        const ids = await this.task().evaluateAll((els) => els.map((e) => e.getAttribute("data-task-id")));
+        return ids.length > 0 && ids[0] !== before;
+      })
       .toBe(true);
   }
 
