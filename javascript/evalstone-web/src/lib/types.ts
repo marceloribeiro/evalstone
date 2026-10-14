@@ -183,5 +183,49 @@ export type LabelTask = {
   label_id: string | null;
 };
 
+export type Adapter = "openai" | "anthropic" | "gemini";
+/** `ProviderOut` — an organization's model provider; the key never comes back (only `has_api_key` + `key_last4`). */
+export type Provider = {
+  id: string;
+  name: string;
+  adapter: Adapter;
+  base_url: string | null;
+  headers: Record<string, string>;
+  prices: Record<string, number[]>;
+  timeout_s: number;
+  max_tokens_param: string | null;
+  has_api_key: boolean;
+  key_last4: string | null;
+  verified_ok: boolean | null;
+  last_verified_at: string | null;
+  last_error: string | null;
+  created_at: string;
+};
+export type ProviderTest = { ok: boolean; model: string; latency_ms: number | null; input_tokens: number; output_tokens: number; cost_usd: number | null; error: string | null };
+/** `JudgeSettingsOut` — which `<provider>/<model>` judges run on, per check or by default. */
+export type JudgeSettings = { project_id: string; default_model: string | null; overrides: Record<string, string> };
+/** `JudgeOut` — a (check, judge version) seen in stored results. */
+export type JudgeSeen = { check_key: string; judge_version: string; model: string | null; results: number; runs: number; first_seen: string; last_seen: string };
+/** `CalibrationOut` — judge verdicts vs human labels for one check + judge version. */
+export type Calibration = {
+  id: string;
+  project_id: string;
+  check_key: string;
+  judge_version: string;
+  label_check: string;
+  status: "queued" | "running" | "done" | "failed";
+  error: string | null;
+  n: number;
+  agreement: number | null;
+  kappa: number | null;
+  mean_abs_error: number | null;
+  confusion: { tp?: number; fp?: number; fn?: number; tn?: number };
+  model: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_by_user_id: string | null;
+  created_at: string;
+};
+
 /** A frame from GET /ws/projects/{id}: {"event": "...", "project_id": "...", "at": "...", ...}. */
 export type LiveEvent = { event: string; project_id?: string; at?: string } & Record<string, unknown>;

@@ -50,6 +50,19 @@ export async function newQueue(seed: Seed, projectId: string, body: Record<strin
   return authed(seed, "post", `/projects/${projectId}/label-queues`, body);
 }
 
+export async function newProvider(seed: Seed, orgId: string, body: Record<string, unknown>): Promise<{ id: string; name: string }> {
+  return authed(seed, "post", `/organizations/${orgId}/providers`, body);
+}
+
+/** Answer every pending task of a queue through the API with `grade(sampleKey)` (1..scale). */
+export async function labelQueue(seed: Seed, projectId: string, queueId: string, grade: (sampleKey: string) => number) {
+  for (;;) {
+    const task = (await authed(seed, "post", `/projects/${projectId}/label-queues/${queueId}/next`)) as { id: string; sample_key: string } | null;
+    if (!task) return;
+    await authed(seed, "post", `/projects/${projectId}/label-queues/${queueId}/tasks/${task.id}/answer`, { grade: grade(task.sample_key) });
+  }
+}
+
 /** Mint an ingest key through the API and push a library report with it (what `evalstone run` does). */
 export async function pushRun(seed: Seed, projectId: string, report: unknown) {
   const { key } = (await authed(seed, "post", `/projects/${projectId}/ingest-keys`, { name: "spec" })) as { key: string };
