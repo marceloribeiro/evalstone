@@ -124,10 +124,11 @@ def test_a_reply_cut_at_the_token_cap_says_so_and_never_passes(stop):
     chk = judge("h", "r", max_tokens=300)
     score = chk(S, Output(value="x"), ctx_with(FakeProvider(judge_reply=CUT, stop_reason=stop)))
     assert score.passed is False and score.cost_usd == 0.001
-    assert score.error == (
-        "judge: reply truncated at max_tokens=300 before the verdict was complete; "
-        "raise the check's max_tokens"
+    assert score.error.startswith(
+        "judge: reply truncated at max_tokens=300; raise the check's max_tokens "
+        "(no JSON object in judge reply: "
     )
+    assert "concrete rule (30 da" in score.error  # the excerpt of what came back survives
 
 
 def test_truncation_only_explains_a_failed_parse():
@@ -136,6 +137,11 @@ def test_truncation_only_explains_a_failed_parse():
         FakeProvider(judge_reply='{"score": 5, "reason": "ok"} and', stop_reason="length")
     )
     assert judge("h", "r")(S, Output(value="x"), full).passed is True
+    # A complete but wrong verdict at the cap is the model's answer, not a truncation.
+    wrong = ctx_with(
+        FakeProvider(judge_reply='{"score": 7, "reason": "x"} and', stop_reason="length")
+    )
+    assert judge("h", "r")(S, Output(value="x"), wrong).error == "judge: judge score 7 outside 1..5"
     # A normal stop keeps the parse error as it was.
     plain = ctx_with(FakeProvider(judge_reply=CUT, stop_reason="stop"))
     assert "no JSON object" in judge("h", "r")(S, Output(value="x"), plain).error

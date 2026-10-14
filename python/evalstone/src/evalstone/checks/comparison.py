@@ -46,6 +46,14 @@ def parse_winner(text: str) -> tuple[str, str]:
     return winner, str(data.get("reason", "")).strip()
 
 
+class _Unparsed(ValueError):
+    """An unparseable judge reply, with what the call cost."""
+
+    def __init__(self, message: str, cost_usd: float, latency_ms: float):
+        super().__init__(message)
+        self.cost_usd, self.latency_ms = cost_usd, latency_ms
+
+
 def pairwise(
     key: str,
     rubric: str,
@@ -81,7 +89,10 @@ def pairwise(
         try:
             winner, reason = parse_winner(resp.text)
         except ValueError as exc:
-            raise ValueError(explain_unparsed(exc, resp, max_tokens)) from None
+            # the failed call was still billed: carry its cost to the errored score
+            raise _Unparsed(
+                explain_unparsed(exc, resp, max_tokens), resp.cost_usd or 0.0, resp.latency_ms
+            ) from None
         if resp.cost_usd is None:
             unpriced.append(resp.model)
         return winner, reason, resp.cost_usd or 0.0, resp.latency_ms
@@ -130,6 +141,12 @@ def pairwise(
                 reasons.append(reason)
         except ProviderError as exc:
             return Score.errored(str(exc), cost_usd=cost, latency_ms=latency)
+        except _Unparsed as exc:
+            return Score.errored(
+                f"pairwise: {exc}",
+                cost_usd=cost + exc.cost_usd,
+                latency_ms=latency + exc.latency_ms,
+            )
         except ValueError as exc:
             return Score.errored(f"pairwise: {exc}", cost_usd=cost, latency_ms=latency)
         value = sum(points) / len(points)

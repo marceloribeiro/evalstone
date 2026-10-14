@@ -42,6 +42,11 @@ class ChatResponse(BaseModel):
     stop_reason: str | None = None
     raw: Any = None
 
+    @property
+    def truncated(self) -> bool:
+        """The provider stopped at the max_tokens cap (OpenAI-compatible, Anthropic, Gemini)."""
+        return (self.stop_reason or "").lower() in {"length", "max_tokens"}
+
 
 class ProviderError(Exception):
     """A provider call failed (HTTP error, refusal, malformed response)."""

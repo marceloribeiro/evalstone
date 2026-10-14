@@ -25,9 +25,6 @@ PROMPT_VERSION = 1
 # (4 of 10 on the rag-bot demo). The cap only bounds a runaway; it is not in the version.
 DEFAULT_MAX_TOKENS = 1024
 
-# How each adapter reports "stopped at the token cap": OpenAI-compatible, Anthropic, Gemini.
-TRUNCATED_STOP_REASONS = frozenset({"length", "max_tokens"})
-
 SYSTEM_TEMPLATE = """You are a strict evaluator grading one answer produced by an AI system.
 
 RUBRIC:
@@ -75,12 +72,18 @@ def parse_verdict(text: str, scale: int) -> tuple[int, str]:
 
 
 def explain_unparsed(exc: ValueError, resp: ChatResponse, max_tokens: int) -> str:
-    """The parse error, or the real cause when the provider stopped at the token cap."""
-    if (resp.stop_reason or "").lower() in TRUNCATED_STOP_REASONS:
-        return (
-            f"reply truncated at max_tokens={max_tokens} before the verdict was complete; "
-            "raise the check's max_tokens"
-        )
+    """The parse error, prefixed with the cause when the cap cut the JSON itself.
+
+    Only an unclosed or invalid object is blamed on the cap: a complete object that is
+    wrong (score out of range, no winner) is the model's answer, not a truncation.
+    """
+    if resp.truncated:
+        try:
+            extract_json(resp.text)
+        except ValueError:
+            return (
+                f"reply truncated at max_tokens={max_tokens}; raise the check's max_tokens ({exc})"
+            )
     return str(exc)
 
 

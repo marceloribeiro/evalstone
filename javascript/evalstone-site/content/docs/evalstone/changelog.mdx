@@ -20,9 +20,13 @@ errored).
   The cut replies needed 286–349 tokens: a verdict plus a long one-sentence reason.
   `max_tokens` is not part of the judge version, so cached verdicts stay valid.
 - A reply the provider stopped at the cap (`length`, `max_tokens`, `MAX_TOKENS`)
-  that does not parse now errors with "reply truncated at max_tokens=N … raise the
-  check's max_tokens" instead of a misleading "no JSON object in judge reply". A
-  complete verdict is still accepted even when the provider reports the cap.
+  whose JSON is unclosed or invalid now errors with "reply truncated at
+  max_tokens=N; raise the check's max_tokens (<the parse error and excerpt>)"
+  instead of only "no JSON object in judge reply". A complete verdict at the cap is
+  accepted, and a complete but wrong one (score out of range) keeps its own error.
+  `ChatResponse.truncated` exposes the check.
+- `comparison.pairwise`: an unparseable judge reply now counts that call's cost
+  (and latency) in the errored score, as `judge` already did.
 
 ## 0.2.1 — 2026-10-14
 
