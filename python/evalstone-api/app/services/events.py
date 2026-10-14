@@ -1,6 +1,6 @@
 """Live updates: services publish project events to Redis; the WebSocket route fans them out.
 
-One channel per project (`evalstone:project:<id>`). Publishing is best-effort — a Redis
+One channel per project (`<REDIS_KEY_PREFIX>project:<id>`). Publishing is best-effort — a Redis
 hiccup never fails the request that produced the event (the database is the truth; the
 socket is a nudge). Payloads are small and self-describing: {"event", "at", ...fields}.
 One pooled client serves every caller (health, publish, tickets): no connect per event.
@@ -35,7 +35,7 @@ TICKET_TTL_S = 60  # a ws ticket is minted over the authenticated REST surface a
 
 
 def channel(project_id: uuid.UUID | str) -> str:
-    return f"evalstone:project:{project_id}"
+    return f"{get_settings().redis_key_prefix}project:{project_id}"
 
 
 @lru_cache
@@ -64,7 +64,7 @@ def publish(project_id: uuid.UUID | str, event: str, **fields: Any) -> bool:
 
 
 def _ticket_key(ticket: str) -> str:
-    return f"evalstone:ws-ticket:{ticket}"
+    return f"{get_settings().redis_key_prefix}ws-ticket:{ticket}"
 
 
 def mint_ticket(project_id: uuid.UUID, credential: str) -> str:

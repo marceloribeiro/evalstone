@@ -80,6 +80,14 @@ tests/
 
 Outsiders get `404`, not `403`, for organizations and projects they do not belong to.
 
+## Upgrading an existing install
+
+Every Redis key is namespaced with `REDIS_KEY_PREFIX` (default `evalstone:`) since 0.2.0 so an
+index can be shared with another app's Celery. The first worker on a prefixed build does not see
+tasks that an unprefixed build left queued or in flight: **drain the worker before upgrading**
+(`celery -A app.worker.celery_app inspect active` empty, then stop the old worker) or accept that
+those tasks are gone — a calibration caught mid-flight stays `running`; request it again.
+
 ## Deploy
 
 `just deploy` clones the monorepo on the server named in `deploy.json`,

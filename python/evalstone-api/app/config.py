@@ -2,7 +2,7 @@ import getpass
 from functools import lru_cache
 
 from cryptography.fernet import Fernet
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
@@ -28,6 +28,19 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/7"
     celery_result_backend: str = "redis://localhost:6379/7"
     celery_task_always_eager: bool = False  # tests: run tasks in-process
+    # Every Redis key and channel (Celery queues, bindings, pidbox, results; pub/sub channels; ws
+    # tickets) is namespaced with this prefix, so one Redis index can be shared with another
+    # app's Celery without consuming each other's tasks (the live box has a Celery app on every
+    # index). Normalised to end with ":"; required outside development/test.
+    redis_key_prefix: str = "evalstone:"
+
+    @field_validator("redis_key_prefix")
+    @classmethod
+    def _prefix_ends_with_a_separator(cls, v: str) -> str:
+        """kombu concatenates the prefix raw while Celery's result backend appends `_` when the
+        last char is not a separator — one family of keys needs one trailing `:`."""
+        v = v.strip()
+        return v if not v or v.endswith(":") else v + ":"
 
     docs_username: str = "evalstone"
     docs_password: str = "change-me"
@@ -80,6 +93,11 @@ class Settings(BaseSettings):
             raise ValueError(f"JWT_SECRET must be at least {MIN_JWT_SECRET_BYTES} bytes (RFC 7518)")
         if not self.provider_creds_key:
             raise ValueError("PROVIDER_CREDS_KEY is empty; set a Fernet key and never change it")
+        if not self.redis_key_prefix:
+            raise ValueError(
+                "REDIS_KEY_PREFIX is empty; on a shared Redis index an unprefixed Celery queue is "
+                "consumed by whichever app's worker gets there first"
+            )
         try:
             Fernet(self.provider_creds_key.encode())
         except (ValueError, TypeError) as err:
