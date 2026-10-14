@@ -9,6 +9,10 @@ and an LLM judge you have measured against people in one center.
 [![PyPI](https://img.shields.io/pypi/v/evalstone)](https://pypi.org/project/evalstone/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**Learn evals:** [Evals 101](https://evalstone.com/docs/learn) · **Docs:** [evalstone.com/docs](https://evalstone.com/docs)
+· **Try the center:** [app.evalstone.com](https://app.evalstone.com) (the demo login is on the
+[Center page](https://evalstone.com/docs/evalstone/center))
+
 ```bash
 pip install evalstone
 evalstone init          # a starter evalstone.yaml, a golden set, recorded outputs, a custom check
@@ -16,9 +20,14 @@ evalstone run nightly   # the results table + a JSON report, to look at
 evalstone gate nightly  # runs the suite itself and exits 1 when the gate fails: the CI step
 ```
 
-**Learn evals:** [Evals 101](https://evalstone.com/docs/learn) · **Docs:** [evalstone.com/docs](https://evalstone.com/docs)
-· **Try the center:** [app.evalstone.com](https://app.evalstone.com) (the demo login is on the
-[Center page](https://evalstone.com/docs/evalstone/center))
+![One minute of Evalstone: init, a gate that catches a regression, then labeling, calibrating and promoting a judge in the center](docs/img/walkthrough.gif)
+
+<sub>One minute: the CLI on a fresh project, then a center running locally — a judged run, ten labels
+from the keyboard, a calibration, Promote. The hosted demo holds its own sample data.
+(<a href="docs/img/src/README.md">how it was recorded</a>)</sub>
+
+<details>
+<summary>Screenshots: a run, the labeler, a calibration</summary>
 
 **A run** — per-check results, the gate, and the judge's reason for every verdict:
 
@@ -31,6 +40,8 @@ evalstone gate nightly  # runs the suite itself and exits 1 when the gate fails:
 **Calibration** — how far to trust a judge against those labels, then Promote it:
 
 ![Judges and a calibration](docs/img/calibration.png)
+
+</details>
 
 > **Status:** the library is on PyPI (CLI, MCP server, pytest plugin, terminal labeling), the
 > GitHub Action is `marceloribeiro/evalstone/action@action-v0`, and the center is live at

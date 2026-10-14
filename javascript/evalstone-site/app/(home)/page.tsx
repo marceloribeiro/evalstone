@@ -1,4 +1,5 @@
 import { Hero } from '@/components/landing/hero';
+import { SeeIt } from '@/components/landing/see-it';
 import { Problem } from '@/components/landing/problem';
 import { WhatAreEvals } from '@/components/landing/what-are-evals';
 import { HowItHelps } from '@/components/landing/how-it-helps';
@@ -12,6 +13,7 @@ export default function HomePage() {
   return (
     <main className="flex-1">
       <Hero />
+      <SeeIt />
       <Problem />
       <WhatAreEvals />
       <HowItHelps />
