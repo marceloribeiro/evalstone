@@ -17,6 +17,7 @@ import type { Run } from "@/lib/types";
 import { ResultsTable } from "@/components/runs/ResultsTable";
 import { CompareView } from "@/components/runs/CompareView";
 import { LoadError } from "@/components/common/LoadError";
+import { Stat } from "@/components/common/Stat";
 
 /** One run: the summary the library computed, the gate, per-check rates, every result, and a diff. */
 export function RunDetail({ runId }: { runId: string }) {
@@ -182,15 +183,6 @@ export function RunDetail({ runId }: { runId: string }) {
           <CompareView projectId={project.id} run={r} base={base} />
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div className="rounded-md border p-3">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={`text-lg font-semibold ${warn ? "text-destructive" : ""}`}>{value}</dd>
     </div>
   );
 }

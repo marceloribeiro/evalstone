@@ -3,7 +3,7 @@ import { request, type APIRequestContext } from "@playwright/test";
 /** Seed through the center API: every test gets its own user (no shared state). */
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8181";
 
-export type Seed = { email: string; password: string; token: string; api: APIRequestContext };
+export type Seed = { id: string; email: string; password: string; token: string; api: APIRequestContext };
 
 export async function newUser(prefix = "web"): Promise<Seed> {
   const api = await request.newContext({ baseURL: API_URL });
@@ -15,11 +15,11 @@ export async function registerUser(api: APIRequestContext, email: string): Promi
   const password = "playwright-pass-1";
   const res = await api.post("/auth/register", { data: { email, password, first_name: "Play", last_name: "Wright" } });
   if (!res.ok()) throw new Error(`register failed: ${res.status()} ${await res.text()}`);
-  const { token } = (await res.json()) as { token: string };
-  return { email, password, token, api };
+  const { token, user } = (await res.json()) as { token: string; user: { id: string } };
+  return { id: user.id, email, password, token, api };
 }
 
-export async function authed(seed: Seed, method: "post" | "get" | "put" | "delete", path: string, data?: unknown) {
+export async function authed(seed: Seed, method: "post" | "get" | "put" | "patch" | "delete", path: string, data?: unknown) {
   const res = await seed.api[method](path, { data, headers: { Authorization: `Bearer ${seed.token}` } });
   if (!res.ok()) throw new Error(`${method.toUpperCase()} ${path} → ${res.status()} ${await res.text()}`);
   return res.status() === 204 ? null : res.json();
@@ -44,6 +44,10 @@ export async function newDataset(seed: Seed, projectId: string, name: string, ex
 
 export async function pushVersion(seed: Seed, projectId: string, datasetId: string, samples: unknown[], note = ""): Promise<{ id: string; version: number }> {
   return authed(seed, "post", `/projects/${projectId}/datasets/${datasetId}/versions`, { samples, note });
+}
+
+export async function newQueue(seed: Seed, projectId: string, body: Record<string, unknown>): Promise<{ id: string; name: string; task_count: number }> {
+  return authed(seed, "post", `/projects/${projectId}/label-queues`, body);
 }
 
 /** Mint an ingest key through the API and push a library report with it (what `evalstone run` does). */
