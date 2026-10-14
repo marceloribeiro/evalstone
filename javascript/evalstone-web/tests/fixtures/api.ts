@@ -63,6 +63,18 @@ export async function labelQueue(seed: Seed, projectId: string, queueId: string,
   }
 }
 
+export async function newCheck(seed: Seed, orgId: string, key: string, type: string, params: Record<string, unknown>) {
+  return authed(seed, "post", `/organizations/${orgId}/checks`, { key, type, params });
+}
+
+/** Push production traces with a freshly minted ingest key (what the app does). */
+export async function pushTraces(seed: Seed, projectId: string, traces: unknown[]) {
+  const { key } = (await authed(seed, "post", `/projects/${projectId}/ingest-keys`, { name: "app" })) as { key: string };
+  const res = await seed.api.post(`/projects/${projectId}/traces`, { data: { traces }, headers: { Authorization: `Bearer ${key}` } });
+  if (!res.ok()) throw new Error(`push traces → ${res.status()} ${await res.text()}`);
+  return (await res.json()) as { stored: number };
+}
+
 /** Mint an ingest key through the API and push a library report with it (what `evalstone run` does). */
 export async function pushRun(seed: Seed, projectId: string, report: unknown) {
   const { key } = (await authed(seed, "post", `/projects/${projectId}/ingest-keys`, { name: "spec" })) as { key: string };
