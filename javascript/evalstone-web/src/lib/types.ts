@@ -145,5 +145,43 @@ export type Sample = {
   source: string;
 };
 
+export type QueueKind = "grade" | "compare" | "verify";
+/** `QueueOut` — a labeling queue materialised from a run (grade), two runs (compare) or a dataset version (verify). */
+export type LabelQueue = {
+  id: string;
+  project_id: string;
+  name: string;
+  kind: QueueKind;
+  instructions: string;
+  check_key: string;
+  scale: number;
+  source: Record<string, unknown>;
+  status: "open" | "closed";
+  due_at: string | null;
+  task_count: number;
+  created_by_user_id: string | null;
+  created_at: string;
+};
+export type QueueProgress = { total: number; pending: number; claimed: number; done: number; skipped: number };
+export type MachineVerdict = { score: number; passed: boolean; reason: string };
+export type OutputPayload = { value?: unknown; model?: string | null; error?: string | null } & Record<string, unknown>;
+/** `TaskOut.payload` per kind (see services/label_queues._grade_items / _compare_items / _verify_items). */
+export type GradePayload = { input: unknown; expected: unknown; output: OutputPayload; run_id: string; result_id: string; check_key: string; machine: MachineVerdict };
+export type ComparePayload = { input: unknown; expected: unknown; a: { run_id: string; output: OutputPayload; hash: string }; b: { run_id: string; output: OutputPayload; hash: string } };
+export type VerifyPayload = { input: unknown; expected: unknown; sample_id: string; dataset_version_id: string };
+export type LabelTask = {
+  id: string;
+  queue_id: string;
+  position: number;
+  sample_key: string;
+  output_hash: string;
+  payload: (GradePayload | ComparePayload | VerifyPayload) & { skip_reason?: string };
+  status: "pending" | "done" | "skipped";
+  assignee_user_id: string | null;
+  claimed_at: string | null;
+  done_at: string | null;
+  label_id: string | null;
+};
+
 /** A frame from GET /ws/projects/{id}: {"event": "...", "project_id": "...", "at": "...", ...}. */
 export type LiveEvent = { event: string; project_id?: string; at?: string } & Record<string, unknown>;
