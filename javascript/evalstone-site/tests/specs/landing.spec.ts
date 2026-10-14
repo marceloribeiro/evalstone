@@ -16,10 +16,29 @@ test.describe('Landing page', () => {
     const home = new HomePage(page);
     await home.goto();
 
-    for (const id of ['problem', 'what-are-evals', 'how-it-helps', 'how-it-works', 'model-or-not', 'learn']) {
+    for (const id of ['see-it', 'problem', 'what-are-evals', 'how-it-helps', 'how-it-works', 'model-or-not', 'learn']) {
       await expect(home.section(id)).toBeVisible();
     }
     await expect(page.getByRole('heading', { name: 'Evals 101, nine short chapters' })).toBeVisible();
+  });
+
+  test('shows the walkthrough video and the three center screenshots, all loaded', async ({ page, request }) => {
+    const home = new HomePage(page);
+    await home.goto();
+
+    const section = home.section('see-it');
+    await expect(section.getByRole('heading', { name: 'One minute, end to end' })).toBeVisible();
+    const video = section.locator('video');
+    await expect(video).toHaveAttribute('src', '/media/walkthrough.mp4');
+    expect((await request.get('/media/walkthrough.mp4')).status()).toBe(200);
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(1);
+
+    const images = section.getByRole('img');
+    await expect(images).toHaveCount(3);
+    for (const img of await images.all()) {
+      await img.scrollIntoViewIfNeeded();
+      await expect.poll(() => img.evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBeGreaterThan(0);
+    }
   });
 
   test('puts the judge first and says what runs without a model', async ({ page }) => {
