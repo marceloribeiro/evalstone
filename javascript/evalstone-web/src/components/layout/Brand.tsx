@@ -1,12 +1,31 @@
 import Link from "next/link";
-import { Gem } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+/** The touchstone mark (docs/img/logo.svg): a faceted stone with a gold tick. */
+export function StoneMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" aria-hidden className={className}>
+      <path d="M20 4 44 5 58 19 59 38 47 57 27 60 10 50 5 30 9 14Z" fill="#292524" stroke="#78716C" strokeWidth="1.4" strokeLinejoin="round" />
+      <g strokeLinejoin="round" strokeWidth=".7">
+        <path d="M20 4 44 5 26 21 9 14Z" fill="#57534E" stroke="#57534E" />
+        <path d="M44 5 58 19 41 29 26 21Z" fill="#44403C" stroke="#44403C" />
+        <path d="M58 19 59 38 47 57 41 29Z" fill="#292524" stroke="#292524" />
+        <path d="M47 57 27 60 31 43 41 29Z" fill="#1C1917" stroke="#1C1917" />
+        <path d="M27 60 10 50 5 30 31 43Z" fill="#292524" stroke="#292524" />
+        <path d="M5 30 9 14 26 21 31 43Z" fill="#3A3532" stroke="#3A3532" />
+        <path d="M26 21 41 29 31 43Z" fill="#322D2A" stroke="#322D2A" />
+      </g>
+      <path d="M17 36.5 26.5 45.5 50 14.5" fill="none" stroke="#D97706" strokeWidth="5.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M28.5 41.5 47 17" fill="none" stroke="#FCD34D" strokeWidth="1.3" strokeLinecap="round" opacity=".7" />
+    </svg>
+  );
+}
 
 /** Wordmark; `mark` = icon only for the collapsed sidebar. */
 export function Brand({ mark = false, href = "/organizations", className }: { mark?: boolean; href?: string | null; className?: string }) {
   const inner = (
     <span className={cn("inline-flex items-center gap-2 font-semibold tracking-tight", className)}>
-      <Gem className="size-5 text-primary" aria-hidden />
+      <StoneMark className="size-5" />
       {!mark && <span>Evalstone</span>}
     </span>
   );
