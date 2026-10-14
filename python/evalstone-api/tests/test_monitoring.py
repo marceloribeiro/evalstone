@@ -1,9 +1,11 @@
 import json
+import uuid
 
 import httpx
 import pytest
 import respx
 
+from app.models import TraceScore
 from app.services import monitoring as svc
 from app.services import providers as provider_svc
 
@@ -70,8 +72,6 @@ def test_trace_ingest_is_idempotent_and_listable(client, project):
 
 
 def test_sample_bucket_is_stable_per_trace():
-    import uuid
-
     pid = uuid.uuid4()
     assert svc.sample_bucket(pid, "t1") == svc.sample_bucket(pid, "t1")
     assert svc.sample_bucket(pid, "t1") != svc.sample_bucket(pid, "t2")
@@ -165,8 +165,6 @@ def test_scoring_deterministic_checks_and_alert_lifecycle(client, project, db):
 
 
 def test_sampling_scores_only_the_bucketed_traces(client, project, db):
-    import uuid
-
     h = project["headers"]
     _catalog(client, project, "has-paris", "contains", {"needles": ["Paris"]})
     m = client.post(
@@ -197,7 +195,13 @@ def _judge_monitor(client, project) -> str:
     h, org = project["headers"], project["org"]
     client.post(
         f"/organizations/{org['id']}/providers",
-        json={"name": "judge", "adapter": "openai", "api_key": "sk-judge", "base_url": UPSTREAM},
+        json={
+            "name": "judge",
+            "adapter": "openai",
+            "api_key": "sk-judge",
+            "base_url": UPSTREAM,
+            "prices": {"small": [1.0, 2.0]},
+        },
         headers=h,
     )
     client.put(_p(project, "/judge-settings"), json={"default_model": "judge/small"}, headers=h)
@@ -229,9 +233,7 @@ def _judge_reply(content: str, finish_reason: str = "stop") -> httpx.Response:
 
 
 @respx.mock
-def test_judge_checks_score_with_the_orgs_provider(client, project, db, monkeypatch):
-    import uuid
-
+def test_judge_checks_score_with_the_orgs_provider(client, project, db):
     monitor_id = _judge_monitor(client, project)
     route = respx.post(UPSTREAM + "/chat/completions").mock(
         return_value=_judge_reply('{"score": 4, "reason": "ok"}')
@@ -243,29 +245,52 @@ def test_judge_checks_score_with_the_orgs_provider(client, project, db, monkeypa
     )  # the org's key, server-side
     # the server-side judge runs the pinned library: 0.2.2+ asks for room for a long reason
     assert json.loads(route.calls[0].request.content)["max_tokens"] == 1024
-    scores = db.query(__import__("app.models", fromlist=["TraceScore"]).TraceScore).all()
+    scores = db.query(TraceScore).all()
     assert all(s.passed and s.score == 0.75 for s in scores)
 
 
 @respx.mock
 def test_a_judge_reply_cut_at_the_cap_is_reported_as_truncated(client, project, db):
-    import uuid
-
-    from app.models import TraceScore
-
     monitor_id = _judge_monitor(client, project)
     respx.post(UPSTREAM + "/chat/completions").mock(
         return_value=_judge_reply('{"score": 4, "reason": "The answer is', finish_reason="length")
     )
     result = svc.score_monitor(db, uuid.UUID(monitor_id))
     assert result["errors"] == 3
-    errors = {s.error for s in db.query(TraceScore).all()}
-    assert all(e and "reply truncated at max_tokens=1024" in e for e in errors), errors
+    rows = db.query(TraceScore).all()
+    assert all(r.error and "reply truncated at max_tokens=1024" in r.error for r in rows)
+    assert all(r.cost_usd > 0 for r in rows)  # the cut call was billed: its cost is kept
+
+
+@respx.mock
+def test_monitor_judges_honour_the_per_check_override(client, project, db):
+    """0.1.1 ignored the `judge_models` the monitor context passes; 0.2.x routes by them."""
+    monitor_id = _judge_monitor(client, project)
+    h, org = project["headers"], project["org"]
+    other = "https://other-judge.example.com/v1"
+    client.post(
+        f"/organizations/{org['id']}/providers",
+        json={"name": "other", "adapter": "openai", "api_key": "sk-other", "base_url": other},
+        headers=h,
+    )
+    put = client.put(
+        _p(project, "/judge-settings"),
+        json={"default_model": "judge/small", "overrides": {"helpful": "other/big"}},
+        headers=h,
+    )
+    assert put.status_code == 200, put.text
+    default = respx.post(UPSTREAM + "/chat/completions").mock(
+        return_value=_judge_reply('{"score": 4, "reason": "ok"}')
+    )
+    override = respx.post(other + "/chat/completions").mock(
+        return_value=_judge_reply('{"score": 4, "reason": "ok"}')
+    )
+    assert svc.score_monitor(db, uuid.UUID(monitor_id))["errors"] == 0
+    assert override.call_count == 3 and default.call_count == 0
+    assert json.loads(override.calls[0].request.content)["model"] == "big"
 
 
 def test_monitor_without_a_usable_judge_records_the_error(client, project, db):
-    import uuid
-
     h = project["headers"]
     _catalog(client, project, "helpful", "judge", {"rubric": "r"})  # no provider configured
     m = client.post(
@@ -304,8 +329,6 @@ def test_beat_task_enqueues_active_monitors(client, project, monkeypatch):
 
 
 def test_webhook_failure_is_recorded_on_the_alert(client, project, db):
-    import uuid
-
     h = project["headers"]
     _catalog(client, project, "has-paris", "contains", {"needles": ["Paris"]})
     hook = "https://hooks.example.com/down"
@@ -347,8 +370,6 @@ def _monitor(client, project, **extra):
 
 
 def test_concurrent_passes_do_not_overlap(client, project, db):
-    import uuid
-
     from app.db import SessionLocal
 
     m = _monitor(client, project)
@@ -406,8 +427,6 @@ def test_history_before_the_monitor_or_outside_the_window_is_not_scored(client, 
 def test_one_crashing_trace_is_an_errored_verdict_not_a_lost_batch(
     client, project, db, monkeypatch
 ):
-    import uuid
-
     from evalstone.config import FACTORIES
 
     m = _monitor(client, project)
@@ -439,8 +458,6 @@ def test_one_crashing_trace_is_an_errored_verdict_not_a_lost_batch(
 
 
 def test_errored_verdicts_are_retried_then_settled(client, project, db, monkeypatch):
-    import uuid
-
     from app.models import TraceScore
 
     m = _monitor(client, project)
@@ -470,8 +487,6 @@ def test_errored_verdicts_are_retried_then_settled(client, project, db, monkeypa
 
 
 def test_alert_resolves_on_recovery_even_below_min_n(client, project, db):
-    import uuid
-
     m = _monitor(client, project, alert_policy={"threshold": 0.9, "min_n": 5})
     kh = {"Authorization": f"Bearer {_key(client, project)}"}
     client.post(_p(project, "/traces"), json={"traces": _traces(6, bad={0, 1, 2})}, headers=kh)
@@ -496,8 +511,6 @@ def test_alert_resolves_on_recovery_even_below_min_n(client, project, db):
 
 
 def test_per_trace_pass_semantics_and_added_checks_backfill(client, project, db):
-    import uuid
-
     h = project["headers"]
     _catalog(client, project, "has-paris", "contains", {"needles": ["Paris"]})
     _catalog(client, project, "short", "length", {"max_words": 100})
@@ -526,8 +539,6 @@ def test_per_trace_pass_semantics_and_added_checks_backfill(client, project, db)
 
 
 def test_delete_and_pause_resolve_open_alerts(client, project, db):
-    import uuid
-
     h = project["headers"]
     m = _monitor(client, project)
     kh = {"Authorization": f"Bearer {_key(client, project)}"}
