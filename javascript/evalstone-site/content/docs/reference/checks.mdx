@@ -26,7 +26,7 @@ A missing or null reference is an **error**.
 
 | Type | Reads | Notes |
 | --- | --- | --- |
-| `judge` | `rubric`, `scale` (default 5), `pass_level` (default: second-highest level; the top level on a 1–2 scale) or `threshold` (0..1), `model`, `include_reference` (default false), `max_tokens` | value = (level−1)/(scale−1); verdicts cached by judge version + prompt — within one process standalone, across runs and machines when the project is [attached to a center](/docs/reference/config#center) — so unchanged outputs cost nothing again |
+| `judge` | `rubric`, `scale` (default 5), `pass_level` (default: second-highest level; the top level on a 1–2 scale) or `threshold` (0..1), `model`, `include_reference` (default false), `max_tokens` (default 1024) | value = (level−1)/(scale−1); verdicts cached by judge version + prompt — within one process standalone, across runs and machines when the project is [attached to a center](/docs/reference/config#center) — so unchanged outputs cost nothing again |
 
 ## RAG (judge-backed; the sample input carries `question` and `context`)
 
@@ -54,7 +54,7 @@ Heuristics, not a DLP engine; keep safety checks in their own suite.
 
 | Type | Reads | Value |
 | --- | --- | --- |
-| `comparison.pairwise` | `rubric`, `baseline` (a target spec or `{sample_id: output}`), `model`, `both_orders` (default true), `max_tokens` (default 256) | mean over judged orders of 1 (candidate preferred) / 0.5 (tie) / 0; passes at 0.5 |
+| `comparison.pairwise` | `rubric`, `baseline` (a target spec or `{sample_id: output}`), `model`, `both_orders` (default true), `max_tokens` (default 1024) | mean over judged orders of 1 (candidate preferred) / 0.5 (tie) / 0; passes at 0.5 |
 
 Both orders are judged by default to cancel position bias.
 

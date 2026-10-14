@@ -12,7 +12,7 @@ from typing import Any
 
 from evalstone._json import sha256
 from evalstone.checks._base import FunctionCheck, judge_model_for
-from evalstone.checks.judge import _json_text, extract_json
+from evalstone.checks.judge import DEFAULT_MAX_TOKENS, _json_text, explain_unparsed, extract_json
 from evalstone.dataset import Sample
 from evalstone.output import Output
 from evalstone.providers import ChatMessage, ProviderError
@@ -53,7 +53,7 @@ def pairwise(
     baseline: Target | Mapping[str, Any],
     model: str | None = None,
     both_orders: bool = True,
-    max_tokens: int = 256,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> FunctionCheck:
     """The candidate output beats the ``baseline`` output for the same sample.
 
@@ -78,7 +78,10 @@ def pairwise(
                 "max_tokens": max_tokens,
             },
         )
-        winner, reason = parse_winner(resp.text)
+        try:
+            winner, reason = parse_winner(resp.text)
+        except ValueError as exc:
+            raise ValueError(explain_unparsed(exc, resp, max_tokens)) from None
         if resp.cost_usd is None:
             unpriced.append(resp.model)
         return winner, reason, resp.cost_usd or 0.0, resp.latency_ms
