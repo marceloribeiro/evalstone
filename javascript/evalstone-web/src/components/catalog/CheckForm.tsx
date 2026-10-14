@@ -27,8 +27,8 @@ export function CheckForm({ organizationId, builtins, existing, onSaved, trigger
     () => Object.fromEntries(builtins.filter((b) => b.storable).map((b) => [b.type, `${b.type} — ${b.kind}`])),
     [builtins],
   );
-  const { params, errors } = builtin ? buildParams(builtin.params, fields) : { params: {}, errors: {} };
-  const keyOk = /^[a-z0-9._-]{1,200}$/.test(key.trim());
+  const { params, errors } = builtin ? buildParams(builtin.params, fields, existing && existing.type === builtin.type ? Object.keys(existing.params) : []) : { params: {}, errors: {} };
+  const keyOk = /^[a-z][a-z0-9._-]{0,199}$/.test(key.trim()); // the API's rule
   const valid = !!builtin && keyOk && Object.keys(errors).length === 0;
 
   const pick = (t: string | null) => {
@@ -71,7 +71,7 @@ export function CheckForm({ organizationId, builtins, existing, onSaved, trigger
               <Input id="check-key" required value={key} onChange={(e) => setKey(e.target.value)} className="font-mono" placeholder="has-paris" autoFocus />
               {key && !keyOk && (
                 <p className="text-xs text-destructive" role="alert">
-                  lowercase letters, digits, &quot;.&quot;, &quot;_&quot; or &quot;-&quot; only
+                  starts with a letter; lowercase letters, digits, &quot;.&quot;, &quot;_&quot; or &quot;-&quot; only
                 </p>
               )}
             </div>

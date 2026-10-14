@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class ParamOut(BaseModel):
     name: str
     required: bool
+    # the library's `_MISSING` default: leave the param out to compare against sample.expected
+    falls_back_to_expected: bool = False
     default: Any
     annotation: str
     machine_bound: str | None  # "callable" | "path" | "target": the value lives on a machine

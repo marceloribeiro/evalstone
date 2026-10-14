@@ -57,14 +57,17 @@ def _params_of(fn: Any) -> list[dict[str, Any]]:
     for p in inspect.signature(fn).parameters.values():
         if p.name == "key" or p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD):
             continue
-        # `_MISSING` means "falls back to sample.expected" — the library's own sentinel
-        required = p.default is p.empty or p.default is _MISSING
+        # `_MISSING` is the library's own sentinel: the param may be left out, in which case the
+        # check reads the value from `sample.expected` — a form must not demand it
+        falls_back = p.default is _MISSING
+        required = p.default is p.empty
         annotation = "" if p.annotation is p.empty else str(p.annotation)
         out.append(
             {
                 "name": p.name,
                 "required": required,
-                "default": None if required else _jsonable(p.default),
+                "falls_back_to_expected": falls_back,
+                "default": None if required or falls_back else _jsonable(p.default),
                 "annotation": annotation,
                 "machine_bound": _machine_bound(annotation),
             }

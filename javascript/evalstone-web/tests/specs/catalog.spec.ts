@@ -9,10 +9,11 @@ test.describe("Check catalog", () => {
     const catalog = new CatalogPage(page);
     await catalog.goto(org.id);
     await expect(page.getByText("No checks yet")).toBeVisible();
-    await catalog.createCheck("has-paris", "contains", { needles: "Paris, France" }, "The answer names the city");
+    await catalog.createCheck("has-paris", "contains", { needles: "Paris\nFrance" }, "The answer names the city");
     await expect(catalog.params()).toContainText("type: contains");
     await expect(catalog.params()).toContainText("- Paris");
     await expect(catalog.params()).toContainText("- France");
+    await expect(catalog.params()).not.toContainText("path:"); // factory defaults are not stored
     await expect(page.getByTestId("check-description")).toContainText("names the city");
     await expect(catalog.versions().getByTestId("version-1")).toContainText("current");
 
@@ -69,10 +70,32 @@ test.describe("Check catalog", () => {
     await expect(dialog.getByRole("alert")).toContainText("lowercase");
     await dialog.getByLabel("Key").fill("has-paris");
     await dialog.getByRole("combobox", { name: "Check type" }).click();
-    await page.getByRole("option", { name: /^contains —/ }).click();
-    await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled(); // needles is required
+    await page.getByRole("option", { name: /^regex —/ }).click();
+    await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled(); // pattern is required (no default at all)
     await expect(dialog.getByRole("alert").filter({ hasText: "required" })).toBeVisible();
+    // an int param refuses a fraction before sending
+    await dialog.getByRole("combobox", { name: "Check type" }).click();
+    await page.getByRole("option", { name: /^length —/ }).click();
+    await catalog.field("max_chars").fill("4.5");
+    await expect(dialog.getByRole("alert").filter({ hasText: "whole number" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
     await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    // `exact` with `expected` left empty compares against the sample's expected: not required
+    await catalog.createCheck("matches", "exact", {});
+    await expect(catalog.params()).toContainText("type: exact");
+    await expect(catalog.params()).not.toContainText("expected:");
+    // a check pushed with defaults spelled out and a comma inside a list item: a description-only edit keeps v1 intact
+    const pushed = (await authed(seed, "post", `/organizations/${org.id}/checks`, { key: "greets", type: "contains", params: { needles: ["Hello, world"], case_sensitive: false } })) as { id: string };
+    await page.goto(`/o/${org.id}/checks/${pushed.id}`);
+    await expect(page.getByRole("heading", { level: 1, name: "greets" })).toBeVisible();
+    await catalog.edit({}, { description: "greeting" });
+    await expect(page.getByTestId("check-description")).toContainText("greeting");
+    await expect(catalog.versions().getByTestId("version-2")).toHaveCount(0);
+    await expect(catalog.params()).toContainText("Hello, world");
+    await expect(catalog.params()).toContainText("case_sensitive: false");
+    await catalog.goto(org.id);
 
     const member = await newUser("viewer");
     await inviteMember(seed, org.id, member.email);

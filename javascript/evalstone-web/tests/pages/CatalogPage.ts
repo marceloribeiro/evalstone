@@ -13,6 +13,13 @@ export class CatalogPage {
     return this.page.getByTestId(`check-${key}`);
   }
 
+  /** A param field in the open dialog by accessible name: text inputs and textareas are textboxes, number inputs are spinbuttons. */
+  field(name: string) {
+    const dialog = this.page.getByRole("dialog");
+    const re = new RegExp(`^${name}\\b`);
+    return dialog.getByRole("textbox", { name: re }).or(dialog.getByRole("spinbutton", { name: re }));
+  }
+
   /** New check: pick the type, fill params by name, create; lands on the detail page. */
   async createCheck(key: string, type: string, params: Record<string, string>, description = "") {
     await this.page.getByRole("button", { name: "New check" }).click();
@@ -20,7 +27,7 @@ export class CatalogPage {
     await dialog.getByLabel("Key").fill(key);
     await dialog.getByRole("combobox", { name: "Check type" }).click();
     await this.page.getByRole("option", { name: new RegExp(`^${type.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} —`) }).click();
-    for (const [name, value] of Object.entries(params)) await dialog.getByLabel(new RegExp(`^${name}\\b`)).fill(value);
+    for (const [name, value] of Object.entries(params)) await this.field(name).fill(value);
     if (description) await dialog.getByLabel("Description").fill(description);
     await dialog.getByRole("button", { name: "Create" }).click();
     await expect(this.page.getByRole("heading", { level: 1, name: key })).toBeVisible();
@@ -44,7 +51,7 @@ export class CatalogPage {
   async edit(params: Record<string, string>, opts: { note?: string; description?: string } = {}) {
     await this.page.getByRole("button", { name: "Edit" }).click();
     const dialog = this.page.getByRole("dialog");
-    for (const [name, value] of Object.entries(params)) await dialog.getByLabel(new RegExp(`^${name}\\b`)).fill(value);
+    for (const [name, value] of Object.entries(params)) await this.field(name).fill(value);
     if (opts.description !== undefined) await dialog.getByLabel("Description").fill(opts.description);
     if (opts.note !== undefined) await dialog.getByLabel(/Version note/).fill(opts.note);
     await dialog.getByRole("button", { name: "Save" }).click();

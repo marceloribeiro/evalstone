@@ -17,7 +17,7 @@ import { useLoader } from "@/hooks/useLoader";
 import { api, errorMessage } from "@/lib/api";
 import { when } from "@/lib/format";
 import { isAdmin } from "@/lib/roles";
-import { toYaml } from "@/lib/yaml";
+import { checkYaml } from "@/lib/yaml";
 import type { BuiltinCheck, CatalogCheck, CheckVersion } from "@/lib/types";
 
 /** One catalog check: its current params, the built-in type's summary, every version, edit (new version on content change) and delete. */
@@ -70,9 +70,9 @@ export function CheckDetail({ checkId }: { checkId: string }) {
         }
         crumbs={crumbs}
         actions={
-          admin && builtins.data ? (
+          admin ? (
             <>
-              <CheckForm organizationId={organization.id} builtins={builtins.data} existing={c} trigger={<Button variant="outline" size="sm">Edit</Button>} onSaved={() => check.reload()} />
+              {builtins.data && <CheckForm organizationId={organization.id} builtins={builtins.data} existing={c} trigger={<Button variant="outline" size="sm">Edit</Button>} onSaved={() => check.reload()} />}
               <Dialog>
                 <DialogTrigger render={<Button variant="outline" size="sm" disabled={deleting}>Delete</Button>} />
                 <DialogContent>
@@ -91,6 +91,11 @@ export function CheckDetail({ checkId }: { checkId: string }) {
           ) : undefined
         }
       />
+      {builtins.error ? (
+        <div className="mb-4">
+          <LoadError what="the built-in check types (editing needs them)" error={builtins.error} retry={builtins.reload} />
+        </div>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -99,7 +104,7 @@ export function CheckDetail({ checkId }: { checkId: string }) {
           </CardHeader>
           <CardContent>
             <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs" data-testid="check-params">
-              {`${c.key}:\n  type: ${c.type}${toYaml(c.params, 1)}`}
+              {checkYaml(c.key, c.type, c.params)}
             </pre>
             <p className="mt-3 text-sm" data-testid="check-description">
               {c.description || <span className="text-muted-foreground">No description.</span>}

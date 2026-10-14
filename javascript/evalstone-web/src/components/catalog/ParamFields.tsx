@@ -14,7 +14,16 @@ export function ParamFields({ params, fields, errors, onChange, idPrefix }: { pa
       {params.map((p) => {
         const widget = widgetFor(p);
         const id = `${idPrefix}-${p.name}`;
-        const hint = p.machine_bound === "callable" ? "a Python callable — bound in the library, not storable here" : p.machine_bound === "path" ? "a file on a machine; only \"center\" is storable" : p.machine_bound === "target" ? "a target spec (JSON)" : p.annotation;
+        const hint =
+          p.machine_bound === "callable"
+            ? "a Python callable — bound in the library, not storable here"
+            : p.machine_bound === "path"
+              ? "a file on a machine; only \"center\" is storable"
+              : p.machine_bound === "target"
+                ? "a target spec (JSON)"
+                : p.falls_back_to_expected
+                  ? `${p.annotation} — leave empty to compare against the sample's expected`
+                  : p.annotation;
         return (
           <div key={p.name} className="space-y-1">
             <Label htmlFor={id} className="font-mono text-xs">
@@ -29,17 +38,25 @@ export function ParamFields({ params, fields, errors, onChange, idPrefix }: { pa
                 <input id={id} type="checkbox" checked={(fields[p.name] ?? (p.default ? "true" : "false")) === "true"} onChange={(e) => onChange(p.name, e.target.checked ? "true" : "false")} />
                 {p.name}
               </label>
+            ) : widget === "tristate" ? (
+              <select id={id} value={fields[p.name] ?? ""} onChange={(e) => onChange(p.name, e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm">
+                <option value="">unset (the check decides)</option>
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
             ) : widget === "json" ? (
-              <Textarea id={id} rows={3} value={fields[p.name] ?? ""} onChange={(e) => onChange(p.name, e.target.value)} className="font-mono text-xs" placeholder={p.default == null ? "{…}" : JSON.stringify(p.default)} />
+              <Textarea id={id} rows={3} value={fields[p.name] ?? ""} onChange={(e) => onChange(p.name, e.target.value)} className="font-mono text-xs" placeholder={p.default == null ? "a value, or JSON for objects and lists" : JSON.stringify(p.default)} />
+            ) : widget === "list" ? (
+              <Textarea id={id} rows={3} value={fields[p.name] ?? ""} onChange={(e) => onChange(p.name, e.target.value)} className="font-mono text-xs" placeholder={"one item per line"} />
             ) : (
               <Input
                 id={id}
-                type={widget === "number" ? "number" : "text"}
-                step={widget === "number" ? "any" : undefined}
+                type={widget === "number" || widget === "int" ? "number" : "text"}
+                step={widget === "int" ? 1 : widget === "number" ? "any" : undefined}
                 value={fields[p.name] ?? ""}
                 onChange={(e) => onChange(p.name, e.target.value)}
-                className={widget === "number" ? "w-40" : undefined}
-                placeholder={widget === "list" ? "comma, separated" : p.default == null ? "" : String(p.default)}
+                className={widget === "number" || widget === "int" ? "w-40" : undefined}
+                placeholder={p.default == null ? "" : String(p.default)}
               />
             )}
             {errors[p.name] && (

@@ -38,6 +38,7 @@ export function CatalogList() {
         actions={admin && builtins.data ? <CheckForm organizationId={organization.id} builtins={builtins.data} trigger={<Button>New check</Button>} onSaved={(c) => router.push(`/o/${organization.id}/checks/${c.id}`)} /> : undefined}
       />
       <div className="space-y-6">
+        {builtins.error ? <LoadError what="the built-in check types (creating a check needs them)" error={builtins.error} retry={builtins.reload} /> : null}
         {checks.error ? (
           <LoadError what="the catalog" error={checks.error} retry={checks.reload} />
         ) : checks.loading && !checks.data ? (
