@@ -35,7 +35,9 @@ def output_hash_of(output_json: dict[str, Any]) -> str:
 def _judge_stamp(raw: Any) -> tuple[str | None, str | None]:
     if not isinstance(raw, dict):
         return None, None
-    jv, model = raw.get("judge_version"), raw.get("model")
+    # `judge_model` (lib >= 0.2.3) is the `<provider>/<model>` the verdict was routed through,
+    # which judge settings accept; older results only carry the provider-reported id.
+    jv, model = raw.get("judge_version"), raw.get("judge_model") or raw.get("model")
     jv = str(jv)[:16] if isinstance(jv, str) and jv else None
     model = str(model)[:200] if isinstance(model, str) and model else None
     return jv, model

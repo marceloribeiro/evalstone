@@ -1,10 +1,11 @@
 """Judge calibration: a judge version against the humans, on what both have graded.
 
 `judges()` lists the judge versions seen in the project's run results (stamped at ingest
-from the library's `raw.judge_version` / `raw.model`). `compute()` joins — in SQL — the
-latest non-errored verdict per (sample, output hash) of one version with the labels of the
-same key and reports agreement, Cohen's kappa, a pass/fail confusion matrix and the mean
-absolute error of the 0..1 values. The job runs in Celery (`app.tasks.calibrate`).
+from the library's `raw.judge_version` / `raw.judge_model`, else `raw.model`). `compute()`
+joins — in SQL — the latest non-errored verdict per (sample, output hash) of one version
+with the labels of the same key and reports agreement, Cohen's kappa, a pass/fail confusion
+matrix and the mean absolute error of the 0..1 values. The job runs in Celery
+(`app.tasks.calibrate`).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import distinct_on
+from sqlalchemy.dialects.postgresql import aggregate_order_by, distinct_on
 from sqlalchemy.orm import Session
 
 from app.errors import Invalid, NotFound
@@ -27,14 +28,23 @@ MAX_PAIRS = 50_000  # labelled outputs a calibration may cover; above it the job
 def judges(db: Session, project: Project) -> list[dict[str, Any]]:
     """Every (check_key, judge_version) with its model, result and run counts and when seen.
 
-    `model` is the provider-reported id of the verdicts (it can vary within a version —
-    dated snapshots); the smallest is shown, deterministically.
+    `model` is the `<provider>/<model>` the most recent verdict was routed through (results
+    from a library before 0.2.3 carry the provider-reported id instead, so the newest stamp
+    wins over an older library's on the same version).
     """
     rows = db.execute(
         select(
             RunResult.check_key,
             RunResult.judge_version,
-            func.min(RunResult.judge_model),
+            # the newest verdict's stamp, by run finish time like compute() (1-based index)
+            func.array_agg(
+                aggregate_order_by(
+                    RunResult.judge_model,
+                    Run.finished_at.desc(),
+                    RunResult.created_at.desc(),
+                    RunResult.id.desc(),
+                )
+            )[1],
             func.count(),
             func.count(func.distinct(RunResult.run_id)),
             func.min(RunResult.created_at),
@@ -119,6 +129,8 @@ def compute(
             RunResult.passed,
             RunResult.score,
             RunResult.judge_model,
+            Run.finished_at,
+            RunResult.created_at,
         )
         .join(Run, Run.id == RunResult.run_id)
         .where(
@@ -140,7 +152,15 @@ def compute(
         .subquery()
     )
     pairs = db.execute(
-        select(latest.c.passed, latest.c.score, latest.c.judge_model, Label.passed, Label.value)
+        select(
+            latest.c.passed,
+            latest.c.score,
+            latest.c.judge_model,
+            latest.c.finished_at,
+            latest.c.created_at,
+            Label.passed,
+            Label.value,
+        )
         .join(
             Label,
             (Label.sample_key == latest.c.sample_key) & (Label.output_hash == latest.c.output_hash),
@@ -155,8 +175,18 @@ def compute(
     tp = fp = fn = tn = 0
     abs_err = 0.0
     model: str | None = None
-    for judge_passed, judge_value, judge_model, human_passed, human_value in pairs:
-        model = min(model, judge_model) if model and judge_model else (model or judge_model)
+    newest: tuple[datetime, datetime] | None = None  # the model of the most recent verdict
+    for (
+        judge_passed,
+        judge_value,
+        judge_model,
+        finished,
+        created,
+        human_passed,
+        human_value,
+    ) in pairs:
+        if judge_model and (newest is None or (finished, created) > newest):
+            model, newest = judge_model, (finished, created)
         if judge_passed and human_passed:
             tp += 1
         elif judge_passed and not human_passed:

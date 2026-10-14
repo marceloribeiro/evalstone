@@ -179,7 +179,15 @@ def judge(
                 reason=f"{n}/{scale}: {reason}" if reason else f"{n}/{scale}",
                 cost_usd=cost,
                 latency_ms=ms,
-                raw={**raw, "score": n, "scale": scale, "judge_version": judge_version},
+                # judge_model = `<provider>/<model>` as routed (what Promote pins); set here so
+                # a verdict served from an older cache entry carries it too
+                raw={
+                    **raw,
+                    "score": n,
+                    "scale": scale,
+                    "judge_version": judge_version,
+                    "judge_model": resolved,
+                },
             )
 
         # The cache holds the model's raw verdict (level + reason), keyed by the
@@ -218,7 +226,7 @@ def judge(
             n,
             reason,
             raw={
-                "model": resp.model,
+                "model": resp.model,  # what the provider reported (a bare id, maybe dated)
                 "tokens": [resp.input_tokens, resp.output_tokens],
                 "unpriced": resp.cost_usd is None,
                 "verdict_reason": reason,
