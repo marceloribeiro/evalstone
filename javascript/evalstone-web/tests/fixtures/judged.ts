@@ -7,7 +7,11 @@ export const JUDGE_VERSION = "8d4f2a1b9c0e7f33";
 type Result = { sample_id: string; output: unknown; score: Record<string, unknown>; [k: string]: unknown };
 
 /** The sample report rewritten as one LLM-judge check `helpful` (mirrors the API's test helper). */
-export function judgedReport(runId: string, opts: { model?: string; judgeFails?: string[]; judgeVersion?: string } = {}) {
+/**
+ * `raw.model` is what the provider reports (a bare id); `raw.judge_model` is the routed `<provider>/<model>` the
+ * center stamps and Promote pins (lib >= 0.2.3). They differ on purpose, so stamping the wrong one fails Promote.
+ */
+export function judgedReport(runId: string, opts: { judgeModel?: string; judgeFails?: string[]; judgeVersion?: string } = {}) {
   const r = JSON.parse(JSON.stringify(REPORT));
   r.id = runId;
   r.check_keys = ["helpful"];
@@ -27,7 +31,13 @@ export function judgedReport(runId: string, opts: { model?: string; judgeFails?:
         latency_ms: 10,
         error: null,
         skipped: false,
-        raw: { model: opts.model ?? "local/tiny", score: passed ? 4 : 2, scale: 5, judge_version: opts.judgeVersion ?? JUDGE_VERSION },
+        raw: {
+          model: "tiny-2026-10-01",
+          judge_model: opts.judgeModel ?? "local/tiny",
+          score: passed ? 4 : 2,
+          scale: 5,
+          judge_version: opts.judgeVersion ?? JUDGE_VERSION,
+        },
       },
     };
   });

@@ -288,3 +288,20 @@ def test_judge_version_includes_the_resolved_default_model():
     b = chk(S, Output(value="Within 30 days."), ctx_with(prov, default="openai/judge-b"))
     assert a.raw["judge_version"] != b.raw["judge_version"]
     assert len(prov.calls) == 2  # different resolved model → different cache key
+
+
+def test_verdict_records_the_routed_model_fresh_and_cached():
+    """`judge_model` is what Promote pins: `<provider>/<model>` as routed, not `resp.model`."""
+    from evalstone.score import Score
+
+    chk = judge("h", "r")
+    ctx = ctx_with(FakeProvider())
+    fresh = chk(S, Output(value="30 days"), ctx)
+    assert fresh.raw["judge_model"] == "openai/judge-model"
+    assert chk(S, Output(value="30 days"), ctx).raw["judge_model"] == "openai/judge-model"
+    # a cache entry written by an older library (no judge_model) still gets it on the way out
+    key, old = next(iter(ctx.cache._data.items()))
+    ctx.cache._data[key] = Score.model_validate(
+        {**old.model_dump(), "raw": {k: v for k, v in old.raw.items() if k != "judge_model"}}
+    )
+    assert chk(S, Output(value="30 days"), ctx).raw["judge_model"] == "openai/judge-model"

@@ -276,3 +276,11 @@ def test_pairwise_unparseable_second_order_keeps_every_call_cost():
     score = pairwise("b", "r", baseline={"s": "x"})(S, Output(value="y"), ctx(Half()))
     assert score.passed is False and "no JSON object" in score.error
     assert score.cost_usd == pytest.approx(0.002)
+
+
+def test_pairwise_records_the_routed_model_fresh_and_cached():
+    chk = pairwise("b", "r", baseline={"s": "x"})
+    c = ctx(JudgeFake())
+    assert chk(S, Output(value="y"), c).raw["judge_model"] == "openai/judge"
+    cached = chk(S, Output(value="y"), c)
+    assert cached.raw["cached"] is True and cached.raw["judge_model"] == "openai/judge"

@@ -115,7 +115,7 @@ def pairwise(
         cached = ctx.cache.get(cache_key) if ctx.cache is not None else None
         if cached is not None:
             # The judge verdict is cached; the baseline was still produced (its cost counts).
-            raw = {**(cached.raw or {}), "cached": True}
+            raw = {**(cached.raw or {}), "judge_model": resolved, "cached": True}
             return cached.model_copy(
                 update={"cost_usd": base.cost_usd, "latency_ms": base.latency_ms, "raw": raw}
             )
@@ -161,6 +161,7 @@ def pairwise(
                 "points": points,
                 "orders": len(points),
                 "judge_version": version,
+                "judge_model": resolved,
                 "unpriced": bool(unpriced),
             },
         )

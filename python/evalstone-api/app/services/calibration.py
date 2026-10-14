@@ -1,10 +1,10 @@
 """Judge calibration: a judge version against the humans, on what both have graded.
 
 `judges()` lists the judge versions seen in the project's run results (stamped at ingest
-from the library's `raw.judge_version` / `raw.model`). `compute()` joins — in SQL — the
-latest non-errored verdict per (sample, output hash) of one version with the labels of the
-same key and reports agreement, Cohen's kappa, a pass/fail confusion matrix and the mean
-absolute error of the 0..1 values. The job runs in Celery (`app.tasks.calibrate`).
+from the library's `raw.judge_version` / `raw.judge_model`). `compute()` joins — in SQL —
+the latest non-errored verdict per (sample, output hash) of one version with the labels of
+the same key and reports agreement, Cohen's kappa, a pass/fail confusion matrix and the
+mean absolute error of the 0..1 values. The job runs in Celery (`app.tasks.calibrate`).
 """
 
 from __future__ import annotations
@@ -27,8 +27,10 @@ MAX_PAIRS = 50_000  # labelled outputs a calibration may cover; above it the job
 def judges(db: Session, project: Project) -> list[dict[str, Any]]:
     """Every (check_key, judge_version) with its model, result and run counts and when seen.
 
-    `model` is the provider-reported id of the verdicts (it can vary within a version —
-    dated snapshots); the smallest is shown, deterministically.
+    `model` is the `<provider>/<model>` the version's verdicts were routed through — what
+    Promote pins. The version hash includes it, so all stamps of one version agree; results
+    from a library before 0.2.3 are not stamped (`min` skips them), and a version seen only
+    from those has no model and cannot be promoted.
     """
     rows = db.execute(
         select(
@@ -79,6 +81,20 @@ def latest_version(db: Session, project: Project, check_key: str) -> str | None:
     )
 
 
+def version_model(db: Session, project: Project, check_key: str, judge_version: str) -> str | None:
+    """The routed model of a judge version, from any of its results (the same rule as judges())."""
+    return db.scalar(
+        select(func.min(RunResult.judge_model))
+        .join(Run, Run.id == RunResult.run_id)
+        .where(
+            Run.project_id == project.id,
+            Run.deleted_at.is_(None),
+            RunResult.check_key == check_key,
+            RunResult.judge_version == judge_version,
+        )
+    )
+
+
 def kappa(tp: int, fp: int, fn: int, tn: int) -> float | None:
     """Cohen's kappa for two binary raters; None when undefined (no variation)."""
     n = tp + fp + fn + tn
@@ -118,7 +134,6 @@ def compute(
             RunResult.output_hash,
             RunResult.passed,
             RunResult.score,
-            RunResult.judge_model,
         )
         .join(Run, Run.id == RunResult.run_id)
         .where(
@@ -140,7 +155,7 @@ def compute(
         .subquery()
     )
     pairs = db.execute(
-        select(latest.c.passed, latest.c.score, latest.c.judge_model, Label.passed, Label.value)
+        select(latest.c.passed, latest.c.score, Label.passed, Label.value)
         .join(
             Label,
             (Label.sample_key == latest.c.sample_key) & (Label.output_hash == latest.c.output_hash),
@@ -154,9 +169,7 @@ def compute(
     )
     tp = fp = fn = tn = 0
     abs_err = 0.0
-    model: str | None = None
-    for judge_passed, judge_value, judge_model, human_passed, human_value in pairs:
-        model = min(model, judge_model) if model and judge_model else (model or judge_model)
+    for judge_passed, judge_value, human_passed, human_value in pairs:
         if judge_passed and human_passed:
             tp += 1
         elif judge_passed and not human_passed:
@@ -178,7 +191,8 @@ def compute(
         "kappa": kappa(tp, fp, fn, tn),
         "mean_abs_error": abs_err / n,
         "confusion": {"tp": tp, "fp": fp, "fn": fn, "tn": tn},
-        "model": model,
+        # the version's routed model, as on the Judges page — not only the labelled pairs'
+        "model": version_model(db, project, check_key, judge_version),
     }
 
 

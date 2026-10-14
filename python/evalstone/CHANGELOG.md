@@ -2,6 +2,22 @@
 
 All notable changes to `python/evalstone`. Semantic versioning; tags `lib-vX.Y.Z`.
 
+## 0.2.3 — 2026-10-14
+
+Promote pins the model the verdicts were routed through, found on the demo project's first
+real calibration.
+
+- `judge` and `comparison.pairwise` record `raw.judge_model`: the `<provider>/<model>` the
+  verdict was routed through (for example `openrouter/anthropic/claude-haiku-5.5`), next to
+  `raw.model`, the id the provider reported (`anthropic/claude-haiku-5.5`). Verdicts served
+  from the cache carry it too.
+- The center stamps only `raw.judge_model`, so the Judges page, calibrations and **Promote**
+  use the routed model. Before, it stamped `raw.model`, and Promote sent that
+  provider-reported id, which judge settings reject (`no provider named 'anthropic'`) or,
+  when a provider of that name existed, route elsewhere. Results pushed by an older library
+  are no longer stamped (a migration clears the old stamps): a version seen only from them
+  shows no model and cannot be promoted until a 0.2.3+ run pushes it.
+
 ## 0.2.2 — 2026-10-14
 
 Judge replies cut off by the token cap, found by the first run against a real

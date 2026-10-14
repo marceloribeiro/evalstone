@@ -12,7 +12,13 @@ REPORT = json.loads((Path(__file__).parent / "fixtures" / "rag-bot-ci-report.jso
 JV = "8d4f2a1b9c0e7f33"
 
 
-def _judged_report(run_id="judge0000001", jv=JV, model="local/tiny", flip: set[str] = frozenset()):
+def _judged_report(
+    run_id="judge0000001",
+    jv=JV,
+    model="local/tiny",
+    flip: set[str] = frozenset(),
+    judge_model: str | None = "local/tiny",  # None = a library before 0.2.3 (no routed stamp)
+):
     """The sample report with one judge check `helpful` whose verdicts the humans will grade."""
     r = copy.deepcopy(REPORT)
     r["id"] = run_id
@@ -40,6 +46,7 @@ def _judged_report(run_id="judge0000001", jv=JV, model="local/tiny", flip: set[s
                         "score": 4 if passed else 2,
                         "scale": 5,
                         "judge_version": jv,
+                        **({"judge_model": judge_model} if judge_model else {}),
                     },
                 },
             }
@@ -79,7 +86,7 @@ def test_judges_lists_versions_seen_in_runs(client, project):
     client.post(f"/projects/{project['id']}/runs", json=_judged_report(), headers=h)
     client.post(
         f"/projects/{project['id']}/runs",
-        json=_judged_report(run_id="judge0000002", jv="aaaaaaaaaaaaaaaa", model="other/big"),
+        json=_judged_report(run_id="judge0000002", jv="aaaaaaaaaaaaaaaa", judge_model="other/big"),
         headers=h,
     )
     client.post(f"/projects/{project['id']}/runs", json=REPORT, headers=h)  # deterministic only
@@ -312,3 +319,85 @@ def test_latest_version_is_per_check_and_by_finish_time(client, project, db):
     p = project_svc.get_project(db, UUID(project["id"]))
     assert cal.latest_version(db, p, "helpful") == "aaaaaaaaaaaaaaaa"
     assert cal.latest_version(db, p, "other") is None
+
+
+def test_promote_pins_the_routed_model_not_the_provider_reported_one(client, project):
+    """Regression (first real-vendor run): OpenRouter reports `anthropic/claude-haiku-5.5`, but
+    the verdict was routed through `openrouter/…`. Promote PUTs the calibration's `model` into the
+    judge settings, which only accept `<org provider>/<model>` — so it must be the routed one."""
+    h, org = project["headers"], project["org"]
+    r = client.post(
+        f"/organizations/{org['id']}/providers",
+        json={
+            "name": "openrouter",
+            "adapter": "openai",
+            "base_url": "https://openrouter.ai/api/v1",
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    report = _judged_report(
+        model="anthropic/claude-haiku-5.5", judge_model="openrouter/anthropic/claude-haiku-5.5"
+    )
+    client.post(f"/projects/{project['id']}/runs", json=report, headers=h)
+    for res in report["results"]:
+        _label(client, project, res, passed=True)
+    judges = client.get(f"/projects/{project['id']}/judges", headers=h).json()
+    assert [j["model"] for j in judges] == ["openrouter/anthropic/claude-haiku-5.5"]
+    cal = client.post(
+        f"/projects/{project['id']}/calibrations", json={"check_key": "helpful"}, headers=h
+    ).json()
+    row = client.get(f"/projects/{project['id']}/calibrations/{cal['id']}", headers=h).json()
+    assert row["model"] == "openrouter/anthropic/claude-haiku-5.5"
+    # what the web's Promote button sends
+    put = client.put(
+        f"/projects/{project['id']}/judge-settings",
+        json={"default_model": None, "overrides": {"helpful": row["model"]}},
+        headers=h,
+    )
+    assert put.status_code == 200, put.text
+    assert put.json()["overrides"] == {"helpful": "openrouter/anthropic/claude-haiku-5.5"}
+
+
+def test_older_library_results_carry_no_model_and_never_override_the_routed_one(client, project):
+    """Review of #54: a 0.2.2 push (provider-reported id only) that finishes AFTER a 0.2.3 one
+    on the same version, labels only on the old-library outputs, and a version seen only from
+    0.2.2 — the routed stamp is the only model Judges/calibrations/Promote ever see."""
+    h = project["headers"]
+    routed = "openrouter/anthropic/claude-haiku-5.5"
+    new = _judged_report(
+        run_id="judge0000new", model="anthropic/claude-haiku-5.5", judge_model=routed
+    )
+    new["started_at"], new["finished_at"] = "2026-10-01T00:00:00Z", "2026-10-01T00:00:01Z"
+    old = _judged_report(
+        run_id="judge0000old", model="anthropic/claude-haiku-5.5", judge_model=None
+    )
+    client.post(f"/projects/{project['id']}/runs", json=new, headers=h)
+    client.post(f"/projects/{project['id']}/runs", json=old, headers=h)  # finishes later
+    judges = client.get(f"/projects/{project['id']}/judges", headers=h).json()
+    assert [j["model"] for j in judges] == [routed]
+    for res in old["results"]:  # the latest verdict per output is the old library's
+        _label(client, project, res, passed=True)
+    cal = client.post(
+        f"/projects/{project['id']}/calibrations", json={"check_key": "helpful"}, headers=h
+    ).json()
+    assert cal["status"] == "done" and cal["model"] == routed
+
+    legacy = _judged_report(run_id="judge00legacy", jv="0000000000legacy", judge_model=None)
+    for res in legacy["results"]:
+        res["check_key"] = "concise"
+    client.post(f"/projects/{project['id']}/runs", json=legacy, headers=h)
+    by_key = {
+        j["check_key"]: j for j in client.get(f"/projects/{project['id']}/judges", headers=h).json()
+    }
+    assert by_key["concise"]["model"] is None  # nothing routable: the web hides Promote
+
+
+def test_a_non_string_judge_model_is_not_stamped(client, project, db):
+    from app.models import RunResult
+
+    report = _judged_report(judge_model=None)
+    for res in report["results"]:
+        res["score"]["raw"]["judge_model"] = {"provider": "openrouter"}
+    client.post(f"/projects/{project['id']}/runs", json=report, headers=project["headers"])
+    assert {r.judge_model for r in db.query(RunResult).all()} == {None}

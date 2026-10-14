@@ -35,7 +35,10 @@ def output_hash_of(output_json: dict[str, Any]) -> str:
 def _judge_stamp(raw: Any) -> tuple[str | None, str | None]:
     if not isinstance(raw, dict):
         return None, None
-    jv, model = raw.get("judge_version"), raw.get("model")
+    # only `judge_model` (lib >= 0.2.3): the `<provider>/<model>` the verdict was routed
+    # through, which Promote pins. An older library's `raw.model` is the provider-reported
+    # id (`claude-haiku-5-5`), which judge settings cannot route — so it is not stamped.
+    jv, model = raw.get("judge_version"), raw.get("judge_model")
     jv = str(jv)[:16] if isinstance(jv, str) and jv else None
     model = str(model)[:200] if isinstance(model, str) and model else None
     return jv, model
@@ -219,8 +222,8 @@ def ingest(
             expected=r.expected,
             output=r.output.model_dump(mode="json"),
             output_hash=output_hash_of(r.output.model_dump(mode="json")),
-            judge_version=_judge_stamp(r.score.raw)[0],
-            judge_model=_judge_stamp(r.score.raw)[1],
+            judge_version=jv,
+            judge_model=jm,
             score=r.score.value,
             passed=r.score.passed,
             reason=r.score.reason,
@@ -230,7 +233,7 @@ def ingest(
             skipped=r.score.skipped,
             raw=r.score.raw,
         )
-        for i, r in enumerate(lib.results)
+        for i, (r, (jv, jm)) in enumerate((r, _judge_stamp(r.score.raw)) for r in lib.results)
     )
     db.commit()
     db.refresh(row)
