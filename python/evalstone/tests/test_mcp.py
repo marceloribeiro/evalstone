@@ -59,6 +59,7 @@ def test_list_run_get_compare_round_trip(project):
     listed = _call(server, "list_suites")
     assert listed["project"] == "mcp-demo" and "nightly" in listed["suites"]
     assert "no_apology" in listed["registered_checks"]
+    assert "require_baseline" not in listed["suites"]["nightly"]["gate"]  # only shown when on
 
     run = _call(server, "run_suite", suite="nightly", report=str(project / "a.json"))
     assert run["summary"]["pass_rate"] == 1.0 and run["gate"]["passed"] is True

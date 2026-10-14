@@ -72,6 +72,31 @@ def test_run_with_baseline_gates_regression(in_dir):
     assert res.exit_code == 1 and "pass rate dropped" in res.output
 
 
+def test_require_baseline_exits_1_without_the_baseline(in_dir):
+    runner.invoke(app, ["init"])
+    cfg = Path("evalstone.yaml")
+    cfg.write_text(
+        cfg.read_text().replace(
+            "gate: {min_pass_rate: 0.9}", "gate: {max_regression: 0.0, require_baseline: true}"
+        )
+    )
+    res = runner.invoke(app, ["gate", "nightly", "--report", "base.json"])
+    assert res.exit_code == 1 and "no baseline run (require_baseline)" in res.output
+    res = runner.invoke(app, ["gate", "nightly", "--report", "x.json", "--baseline", "base.json"])
+    assert res.exit_code == 0, res.output
+    assert "PASS pass rate dropped 0.0%" in res.output
+
+
+def test_a_misspelt_gate_key_is_a_config_error(in_dir):
+    runner.invoke(app, ["init"])
+    cfg = Path("evalstone.yaml")
+    cfg.write_text(
+        cfg.read_text().replace("gate: {min_pass_rate: 0.9}", "gate: {min_pass_rte: 0.9}")
+    )
+    res = runner.invoke(app, ["gate", "nightly"])
+    assert res.exit_code == 2 and "min_pass_rte" in res.output
+
+
 def test_errors_are_reported_with_exit_2(in_dir):
     assert runner.invoke(app, ["run", "nightly"]).exit_code == 2  # no config
     runner.invoke(app, ["init"])

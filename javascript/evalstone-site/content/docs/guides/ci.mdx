@@ -14,7 +14,13 @@ evalstone gate nightly --baseline reports/main.json
 Exit 1 when the gate fails. `--baseline` supplies the run that a
 `max_regression:` threshold in the suite's gate compares against (a saved
 report from `main`, say); a gate without `max_regression` ignores the baseline
-and prints no regression line. Works in any CI.
+and prints no regression line. Without a baseline the regression check is
+skipped and the gate can still pass, which suits a first run; once `main` has a
+baseline report, add `require_baseline: true` to the gate so a missing or
+mismatched baseline fails the job instead. A PR that edits the dataset or the
+check list then fails too, since nothing comparable exists yet: refresh the
+baseline (rerun the suite on the new definition and save that report) as part
+of that change. Works in any CI.
 
 ## The pytest plugin
 

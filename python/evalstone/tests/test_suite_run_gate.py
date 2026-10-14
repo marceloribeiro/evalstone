@@ -104,6 +104,75 @@ def test_gate_regression_against_a_baseline():
     ]
 
 
+def test_require_baseline_fails_without_a_comparable_baseline():
+    suite = make_suite(Gate(max_regression=0.1, require_baseline=True))
+    baseline = suite.run(RecordedTarget(GOOD))
+
+    missing = suite.run(RecordedTarget(GOOD))
+    assert missing.gate_passed is False
+    assert "FAIL regression: no baseline run (require_baseline)" in missing.gate_lines
+
+    empty = baseline.model_copy(
+        update={"summary": baseline.summary.model_copy(update={"results": 0})}
+    )
+    assert suite.run(RecordedTarget(GOOD), baseline=empty).gate_passed is False
+
+    other_ds = Dataset.from_records("golden", [{"id": "a", "input": "q1"}])
+    elsewhere = Suite("support", dataset=other_ds, checks=[es.checks.length(max_words=10)])
+    foreign = elsewhere.run(RecordedTarget(GOOD))
+    lines = suite.run(RecordedTarget(GOOD), baseline=foreign).gate_lines
+    assert any(line.startswith("FAIL regression: baseline ran on dataset") for line in lines)
+    assert any(line.startswith("FAIL regression: baseline checks") for line in lines)
+    assert not any("pass rate dropped" in line for line in lines)  # no drop across a mismatch
+
+    # a matching baseline: the comparison runs and still catches a drop
+    ok = suite.run(RecordedTarget(GOOD), baseline=baseline)
+    assert ok.gate_passed is True
+    assert "PASS pass rate dropped 0.0% vs baseline (max 10.0%)" in ok.gate_lines
+    worse = suite.run(RecordedTarget({**GOOD, "b": "No idea."}), baseline=baseline)
+    assert worse.gate_passed is False
+
+
+def test_without_require_baseline_a_mismatch_only_warns():
+    suite = make_suite(Gate(max_regression=0.1))
+    other_ds = Dataset.from_records("golden", [{"id": "a", "input": "q1"}])
+    foreign = Suite("support", dataset=other_ds, checks=[es.checks.length(max_words=10)]).run(
+        RecordedTarget(GOOD)
+    )
+    run = suite.run(RecordedTarget(GOOD), baseline=foreign)
+    assert run.gate_passed is True
+    assert "WARN baseline ran on a different dataset version" in run.gate_lines
+
+
+def test_require_baseline_rejects_an_errored_or_foreign_suite_baseline():
+    suite = make_suite(Gate(max_regression=0.1, require_baseline=True))
+    # recorded during an outage: every result errored, pass rate 0 would hide any drop
+    outage = suite.run(RecordedTarget({}))
+    assert outage.summary.results > 0 and outage.summary.error_rate == 1.0
+    lines = suite.run(RecordedTarget({**GOOD, "b": "No idea."}), baseline=outage).gate_lines
+    assert "FAIL regression: baseline error rate 100.0% > 0.0% (require_baseline)" in lines
+    assert not any("pass rate dropped" in line for line in lines)
+
+    smoke = Suite(
+        "smoke", dataset=DS, checks=[es.checks.contains(), es.checks.length(max_words=10)]
+    )
+    lines = suite.run(RecordedTarget(GOOD), baseline=smoke.run(RecordedTarget(GOOD))).gate_lines
+    assert (
+        "FAIL regression: baseline is suite 'smoke', this run is 'support' (require_baseline)"
+        in lines
+    )
+
+
+def test_gate_rejects_unknown_keys():
+    with pytest.raises(ValueError, match="require_basline"):
+        Gate(max_regression=0.1, require_basline=True)
+
+
+def test_require_baseline_needs_max_regression():
+    with pytest.raises(ValueError, match="require_baseline needs max_regression"):
+        Gate(require_baseline=True)
+
+
 def test_json_round_trip_and_compare(tmp_path):
     suite = make_suite()
     a = suite.run(RecordedTarget({**GOOD, "c": "Costs $5."}))
