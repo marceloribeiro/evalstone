@@ -1,52 +1,68 @@
 ---
 title: Center
-description: The training center and the check center — API and web. Design, not yet built.
+description: The hosted (or self-hosted) home for runs, datasets, labels, judges and monitors — API and web.
 ---
 
-<Callout type="warn" title="Planned">
-  The center ships after the library and the integrations. This page is the
-  design. You will be able to self-host it (a docker-compose for PostgreSQL,
-  Redis, the API and the web app) or use the hosted instance.
+<Callout type="info" title="Live">
+  The center is running at [app.evalstone.com](https://app.evalstone.com)
+  (API: `https://api.evalstone.com`). Look around with the demo account —
+  **demo@evalstone.com** / **demo-rDaBMGS74RBR** — it holds the `rag-bot` sample's runs,
+  golden set, a labeling queue and a monitor with an open alert. Or self-host it:
+  `docker compose up` from the repository, as in the
+  [Quick start](https://github.com/marceloribeiro/evalstone/blob/main/QUICK_START.md).
 </Callout>
 
-The center is where evals become a **practice** shared by a team. It is two
-halves on one API and one PostgreSQL database.
+The center is where evals become a **practice** shared by a team: the library on each
+machine keeps running suites; the center keeps the history, the datasets, the human
+labels, the judge calibrations and the production monitors in one PostgreSQL database,
+behind one API and one web app.
 
-## Training center
+## Attach a project
 
-- **Datasets with immutable versions.** Content-hashed snapshots; a diff
-  between any two versions; runs pin a version.
-- **Harvest from traffic.** Pull traces a monitor scored low, user-flagged
-  ones, or a random sample into a dataset; near-duplicates are dropped by
-  embedding similarity (pgvector).
-- **Labeling queue.** Tasks to grade, compare A/B, or verify an expected
-  value; assignees; keyboard-driven UI; labels feed the golden set.
-- **Judge calibration.** Run a judge version over a labeled set; get
-  agreement, Cohen's kappa and a confusion matrix; promote the judge when it
-  clears your threshold. Re-run when the judge model changes.
-- **Iteration log.** Prompt and model versions and the runs they produced,
-  so "did v7 beat v6" is a click.
+In `evalstone.yaml`:
 
-## Check center
+```yaml
+center:
+  url: https://api.evalstone.com
+  project: <project id>            # shown on the project's home page
+  api_key_env: EVALSTONE_API_KEY   # an es_… ingest key minted on the project
+```
 
-- **Run history.** Every run from CLI, CI, MCP or a monitor; baselines; a
-  sample-by-sample diff with the judge's reasons.
-- **Catalog.** The built-in checks and your organization's, versioned, so a
-  check means the same thing in every project.
-- **Monitors and alerts.** Standing checks over sampled production traces
-  with a windowed alert policy; email and webhook notifications.
-- **Live updates.** Run progress and alerts over a WebSocket.
+From then on `evalstone run` pushes its report, judges run through the center's model
+proxy with the organization's provider keys (no key on the machine), verdicts are cached
+in the center, and `human` checks look labels up there. Prompt targets — the system under
+test — still use your local `providers:`.
+
+## What the web app shows
+
+- **Project home** — the attach snippet, ingest keys, a live feed of events, the latest runs.
+- **Runs** — every report pushed, per-check rates, the gate, every result with its reason,
+  a diff against the suite's baseline (regressions and improvements, sample by sample).
+- **Datasets** — immutable content-hashed versions, a sample viewer, the diff between two
+  versions, tags.
+- **Labeling** — queues to grade outputs, compare two runs A/B, or verify a dataset's
+  expected answers; assignment; a keyboard-driven labeler (digits, P/F, A/B/T, S, Enter).
+- **Judges** — the organization's providers (keys write-only), the project's judge
+  settings, every judge version seen in results, calibrations against human labels
+  (agreement, Cohen's kappa, confusion), and *Promote* to make a calibrated judge the
+  check's model.
+- **Monitors + alerts** — sampled production traces scored every minute with catalog
+  checks, a windowed alert policy, a webhook, the traces themselves (flag the odd ones).
+- **Check catalog** — checks defined once per organization from the library's built-in
+  types, versioned, exported as the `checks:` block of an `evalstone.yaml`.
+- **Members, invitations, project settings.**
 
 ## API
 
-Everything above is a REST endpoint with OpenAPI docs: organizations,
-projects, ingest keys, datasets and versions, checks, suites, runs and
-results, label queues, judges and calibrations, traces, monitors, alerts.
-Users authenticate with JWT; the library, CI and proxies use a per-project
-ingest key.
+Everything above is a REST endpoint with OpenAPI docs (`/docs`, behind basic auth on
+the hosted instance): organizations, projects, ingest keys, providers and judge
+settings, the model proxy, datasets and versions, checks, runs and results, labels and
+the judge cache, label queues, judges and calibrations, traces, monitors, alerts, and a
+WebSocket per project for live updates. Users authenticate with a JWT; the library, CI
+and proxies use a per-project ingest key.
 
 ## Stack
 
-FastAPI · SQLAlchemy 2 + Alembic · PostgreSQL 16 with pgvector · Redis ·
-Celery for calibration jobs, harvest embedding and monitor scoring. Next.js
-for the web app.
+FastAPI · SQLAlchemy 2 + Alembic · PostgreSQL 16 with pgvector · Redis · Celery for
+calibration jobs and monitor scoring · Next.js for the web app. One `docker-compose.yml`
+runs all of it for self-hosters.

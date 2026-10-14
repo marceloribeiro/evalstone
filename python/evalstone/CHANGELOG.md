@@ -2,7 +2,7 @@
 
 All notable changes to `python/evalstone`. Semantic versioning; tags `lib-vX.Y.Z`.
 
-## 0.2.0 — unreleased
+## 0.2.0 — 2026-10-14
 
 Attach a project to a center.
 

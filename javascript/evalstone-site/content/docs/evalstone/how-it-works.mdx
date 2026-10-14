@@ -96,7 +96,7 @@ Rules that hold for every adapter:
   one run — or one MCP server session, which keeps its cache across calls — an
   unchanged output on an unchanged judge is never sent twice. Each `evalstone
   run` is a new process with an empty cache; a cache shared across runs and
-  machines is part of the planned [center](/docs/evalstone/center).
+  machines is what an attached [center](/docs/evalstone/center) provides.
 - **Calls are priced from a built-in table** of USD per million tokens, which
   today lists Claude models. A model that is not in it is reported `unpriced`
   and counts as zero toward `max_cost_usd`, so add your models under `prices:`
@@ -137,7 +137,7 @@ that is your feature under test, not Evalstone.
 
 ## Where the data goes
 
-Today: nowhere but your provider. A run is a JSON file you keep, commit or
-upload as a CI artifact. The planned [center](/docs/evalstone/center) adds an
-API you can self-host that stores runs in PostgreSQL; the library will stay
-usable without it.
+Without a center: nowhere but your provider. A run is a JSON file you keep, commit or
+upload as a CI artifact. With a `center:` block the run is also pushed to the
+[center](/docs/evalstone/center) — hosted or self-hosted — which stores it in PostgreSQL
+next to your datasets, labels and monitors; the library stays usable without it.

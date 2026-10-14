@@ -42,13 +42,14 @@ test.describe('Learning center', () => {
     await docs.goto('/evalstone');
     const status = page.getByText('Status', { exact: true }).locator('..');
     await expect(status).toContainText('are live');
-    await expect(status).toContainText('The center is next');
+    await expect(status).toContainText('The center is live too');
     await docs.goto('/evalstone/how-it-works');
     await expect(page.getByText('Released', { exact: true })).toBeVisible();
     await docs.goto('/evalstone/library');
     await expect(page.getByText('Released', { exact: true })).toBeVisible();
     await docs.goto('/evalstone/center');
-    await expect(page.getByText('Planned', { exact: true })).toBeVisible();
+    await expect(page.getByText('Live', { exact: true })).toBeVisible();
+    await expect(page.getByText('demo@evalstone.com')).toBeVisible();
   });
 
   test('the markdown mirror serves a chapter as text', async ({ request }) => {
